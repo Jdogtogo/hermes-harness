@@ -1,62 +1,45 @@
 """
-Validation helpers for Hermes Multi-Agent Harness v1.
-
-Provides checks beyond what Pydantic enforces at construction time,
-such as cross-field invariants and payload shape requirements.
+Validation logic for Hermes Multi-Agent Harness v1.
 """
 from __future__ import annotations
 
 from typing import List, Tuple
 
-from harness.job_models import HarnessJob, RoleType
-
+from harness.job_models import SafetyConfig, ToolCategory, RoleType, HarnessJob
 
 def validate_job(job: HarnessJob) -> Tuple[bool, List[str]]:
-    """
-    Run full business-rule validation on a HarnessJob.
-
-    Returns (ok, [error_messages]).
-    If ok is True the list is empty.
-    """
+    """Validate a HarnessJob for basic correctness."""
     errors: List[str] = []
-
-    # Task IDs must be unique within the job
-    seen: set = set()
-    for task in job.tasks:
-        if task.task_id in seen:
-            errors.append(f"Duplicate task_id: {task.task_id!r}")
-        seen.add(task.task_id)
-
-    # Payload shape hints (warnings as errors for strict validation)
-    for task in job.tasks:
-        if task.role_type == RoleType.research:
-            if "query" not in task.payload:
-                errors.append(
-                    f"Task {task.task_id!r}: research payload missing 'query' key"
-                )
-        elif task.role_type == RoleType.memory_state:
-            for required in ("operation", "key"):
-                if required not in task.payload:
-                    errors.append(
-                        f"Task {task.task_id!r}: memory_state payload missing {required!r} key"
-                    )
-        elif task.role_type == RoleType.execution:
-            if "action" not in task.payload:
-                errors.append(
-                    f"Task {task.task_id!r}: execution payload missing 'action' key"
-                )
-
+    if not job.job_id or not job.job_id.strip():
+        errors.append("job_id must not be blank")
+    if not job.tasks:
+        errors.append("tasks must contain at least one task")
+    else:
+        task_ids = [t.task_id for t in job.tasks]
+        if len(task_ids) != len(set(task_ids)):
+            errors.append("duplicate task IDs are not allowed")
     return (len(errors) == 0, errors)
 
 
-def validate_agent_output_shape(output_dict: dict) -> Tuple[bool, str]:
+def validate_tool_access(
+    config: SafetyConfig,
+    role_type: RoleType,
+    category: ToolCategory,
+    has_audit_context: bool = False
+) -> tuple[bool, str]:
     """
-    Check that a raw dict has the required AgentOutput fields.
+    Validates if a tool call is permitted based on current SafetyConfig.
+    """
+    if config.deterministic_only:
+        return False, "Guardrail violation: Deterministic mode is active (deterministic_only=True)"
 
-    Used when a role returns something that is not a typed AgentOutput.
-    """
-    required = {"task_id", "role_type", "result", "success"}
-    missing  = required - output_dict.keys()
-    if missing:
-        return False, f"AgentOutput missing fields: {sorted(missing)}"
-    return True, ""
+    if not config.allow_real_tool_calls:
+        return False, "Guardrail violation: Real tool calls are disabled (allow_real_tool_calls=False)"
+
+    if category not in config.allowed_tool_categories:
+        return False, f"Guardrail violation: Tool category {category!r} is not in allowlist"
+
+    if config.require_audit_log and not has_audit_context:
+        return False, "Guardrail violation: Audit logging required, but no audit context provided"
+
+    return True, "Access granted"

@@ -72,7 +72,6 @@ class AgentInput(BaseModel):
     role_type: RoleType
     payload:   Dict[str, Any]
 
-
 class AgentOutput(BaseModel):
     task_id:       str
     role_type:     RoleType
@@ -99,3 +98,30 @@ class HarnessResult(BaseModel):
     task_outputs: List[AgentOutput]         = Field(default_factory=list)
     errors:       List[HarnessError]        = Field(default_factory=list)
     completed_at: Optional[str]             = None
+
+
+# ── Safety & Auditing ───────────────────────────────────────────────────────
+
+class ToolCategory(str, Enum):
+    research = "research"
+    memory = "memory"
+    execution = "execution"
+
+class SafetyConfig(BaseModel):
+    deterministic_only: bool = True
+    allow_real_tool_calls: bool = False
+    allowed_tool_categories: list[ToolCategory] = []
+    require_audit_log: bool = True
+    max_steps: int = 5
+    timeout_seconds: int = 60
+
+class AuditEvent(BaseModel):
+    event_id: str
+    job_id: str
+    task_id: str
+    role_type: RoleType
+    proposed_tool_category: ToolCategory | None
+    action: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    status: str
+    message: str

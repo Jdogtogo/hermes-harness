@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -23,13 +24,13 @@ from pydantic import ValidationError
 
 from harness.atomic_io   import atomic_json_read, atomic_json_write
 from harness.job_models  import (
-    AgentInput, AgentOutput, HarnessError, HarnessJob, HarnessResult,
-    HarnessTask, JobStatus, RoleType,
+    AgentInput, AgentOutput, AuditEvent, HarnessError, HarnessJob, HarnessResult,
+    HarnessTask, JobStatus, RoleType, SafetyConfig, ToolCategory,
 )
 from harness.roles        import ExecutionAgent, MemoryStateAgent, ResearchAgent
 from harness.state_store  import StateStore
 from harness.supervisor   import Supervisor
-from harness.validators   import validate_job
+from harness.validators   import validate_job, validate_tool_access
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
@@ -318,7 +319,7 @@ def test_existing_drift_diagnostic_still_runs():
     returns defaults, so the orchestrator outputs {} (no drift).
     """
     result = subprocess.run(
-        ["/tmp/harness_venv/bin/python", "/tmp/harness/orchestrator_v2.py"],
+        ["/home/jfroh/hermes/harness_venv/bin/python", "/home/jfroh/hermes/harness/orchestrator_v2.py"],
         capture_output=True, text=True, timeout=15,
     )
     assert result.returncode == 0, (
@@ -327,3 +328,64 @@ def test_existing_drift_diagnostic_still_runs():
     )
     output = json.loads(result.stdout)
     assert isinstance(output, dict)
+
+
+# ── Guardrail tests ─────────────────────────────────────────────────────────
+
+def test_guardrail_defaults_block_all():
+    config = SafetyConfig()
+    for category in [ToolCategory.research, ToolCategory.memory, ToolCategory.execution]:
+        ok, msg = validate_tool_access(config, RoleType.research, category)
+        assert not ok
+        assert "Guardrail violation" in msg
+
+
+def test_guardrail_allowlist_blocks_non_allowlisted():
+    config = SafetyConfig(
+        deterministic_only=False,
+        allow_real_tool_calls=True,
+        allowed_tool_categories=[ToolCategory.research],
+        require_audit_log=False
+    )
+    # research allowed
+    ok, _ = validate_tool_access(config, RoleType.research, ToolCategory.research)
+    assert ok
+    # memory not allowed
+    ok, msg = validate_tool_access(config, RoleType.research, ToolCategory.memory)
+    assert not ok
+    assert "not in allowlist" in msg
+
+
+def test_guardrail_requires_audit_log():
+    config = SafetyConfig(
+        deterministic_only=False,
+        allow_real_tool_calls=True,
+        allowed_tool_categories=[ToolCategory.research],
+        require_audit_log=True
+    )
+    # no audit context - blocked
+    ok, msg = validate_tool_access(
+        config, RoleType.research, ToolCategory.research, has_audit_context=False
+    )
+    assert not ok
+    assert "Audit logging required" in msg
+    # with audit context - pass
+    ok, _ = validate_tool_access(
+        config, RoleType.research, ToolCategory.research, has_audit_context=True
+    )
+    assert ok
+
+
+def test_audit_event_model_validates():
+    event = AuditEvent(
+        event_id="evt-001",
+        job_id="job-001",
+        task_id="t1",
+        role_type=RoleType.research,
+        proposed_tool_category=ToolCategory.research,
+        action="web_search",
+        status="attempted",
+        message="Testing audit event"
+    )
+    assert event.event_id == "evt-001"
+    assert isinstance(event.timestamp, datetime)
