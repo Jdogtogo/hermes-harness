@@ -1,8 +1,5 @@
 """
 Supervisor layer for Hermes Multi-Agent Harness v1.
-
-Accepts a HarnessJob, validates it, routes each task to the registered
-role, validates the output, and returns a HarnessResult.
 """
 from __future__ import annotations
 
@@ -11,13 +8,8 @@ from datetime import datetime, timezone
 from pydantic import ValidationError
 
 from harness.job_models import (
-    AgentInput,
-    AgentOutput,
-    HarnessError,
-    HarnessJob,
-    HarnessResult,
-    JobStatus,
-    RoleType,
+    AgentInput, AgentOutput, HarnessError, HarnessJob, HarnessResult,
+    JobStatus, RoleType, SafetyConfig,
 )
 from harness.roles import ExecutionAgent, MemoryStateAgent, ResearchAgent
 
@@ -29,19 +21,28 @@ _ROLE_REGISTRY: dict = {
 
 
 class Supervisor:
-    """
-    Routes HarnessJob tasks to roles and collects HarnessResult.
-
-    Deterministic and synchronous.  All paths return a HarnessResult;
-    exceptions are caught and converted to errors — the supervisor
-    never propagates exceptions to the caller.
-    """
+    def __init__(self, safety_config: SafetyConfig | None = None) -> None:
+        self.safety_config = safety_config if safety_config is not None else SafetyConfig()
 
     def process(self, job: HarnessJob) -> HarnessResult:
         errors: list[HarnessError]  = []
         outputs: list[AgentOutput]  = []
 
-        # ── Step 1: re-validate job (defence-in-depth) ─────────────────────
+        if len(job.tasks) > self.safety_config.max_steps:
+            errors.append(HarnessError(
+                job_id=job.job_id,
+                error_type="max_steps_exceeded",
+                message=(
+                    f"Job has {len(job.tasks)} tasks, which exceeds "
+                    f"SafetyConfig.max_steps={self.safety_config.max_steps}"
+                ),
+            ))
+            return HarnessResult(
+                job_id=job.job_id,
+                status=JobStatus.failed_validation,
+                errors=errors,
+            )
+
         try:
             HarnessJob.model_validate(job.model_dump())
         except ValidationError as exc:
@@ -56,14 +57,46 @@ class Supervisor:
                 errors=errors,
             )
 
-        # ── Step 2: process each task ───────────────────────────────────────
+        for task in job.tasks:
+            if "safety_config" in task.payload:
+                errors.append(HarnessError(
+                    job_id=job.job_id,
+                    task_id=task.task_id,
+                    error_type="safety_config_override_attempt",
+                    message=(
+                        "Task payload contains 'safety_config', which is "
+                        "not allowed.  The supervisor's SafetyConfig is "
+                        "authoritative."
+                    ),
+                ))
+                return HarnessResult(
+                    job_id=job.job_id,
+                    status=JobStatus.failed_validation,
+                    errors=errors,
+                )
+
+        if "safety_config" in job.metadata:
+            errors.append(HarnessError(
+                job_id=job.job_id,
+                error_type="safety_config_override_attempt",
+                message=(
+                    "Job metadata contains 'safety_config', which is "
+                    "not allowed.  The supervisor's SafetyConfig is "
+                    "authoritative."
+                ),
+            ))
+            return HarnessResult(
+                job_id=job.job_id,
+                status=JobStatus.failed_validation,
+                errors=errors,
+            )
+
         for task in job.tasks:
             inp = AgentInput(
                 task_id=task.task_id,
                 role_type=task.role_type,
                 payload=task.payload,
             )
-
             role = _ROLE_REGISTRY.get(task.role_type)
             if role is None:
                 errors.append(HarnessError(
@@ -78,8 +111,6 @@ class Supervisor:
                     task_outputs=outputs,
                     errors=errors,
                 )
-
-            # Execute
             try:
                 output = role.run(inp)
             except Exception as exc:
@@ -95,8 +126,6 @@ class Supervisor:
                     task_outputs=outputs,
                     errors=errors,
                 )
-
-            # Validate output schema
             try:
                 AgentOutput.model_validate(output.model_dump())
             except ValidationError as exc:
@@ -112,8 +141,6 @@ class Supervisor:
                     task_outputs=outputs,
                     errors=errors,
                 )
-
-            # Check role-reported failure
             if not output.success:
                 errors.append(HarnessError(
                     job_id=job.job_id,
@@ -127,10 +154,8 @@ class Supervisor:
                     task_outputs=outputs,
                     errors=errors,
                 )
-
             outputs.append(output)
 
-        # ── Step 3: completed ───────────────────────────────────────────────
         return HarnessResult(
             job_id=job.job_id,
             status=JobStatus.completed,

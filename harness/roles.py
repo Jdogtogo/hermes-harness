@@ -1,23 +1,21 @@
 """
 Minimal role abstractions for Hermes Multi-Agent Harness v1.
-
-ResearchAgent, MemoryStateAgent, ExecutionAgent are deterministic,
-non-LLM placeholder implementations.  Each validates I/O against the
-Harness schemas and returns an honest [STUB] marker so callers know
-no real work has been performed.
-
-These are NOT autonomous LLM agents.  They are safe, testable foundations.
 """
 from __future__ import annotations
 
-from harness.job_models import AgentInput, AgentOutput, RoleType
+import uuid
+from datetime import datetime, timezone
+
+from harness.job_models import (
+    AgentInput, AgentOutput, AuditEvent, AuditStatus, RoleType, SafetyConfig, ToolCategory,
+)
+from harness.research_tools import inspect_file_metadata
+from harness.state_store import StateStore
 
 
 class BaseRole:
     name:      str      = "BaseRole"
     role_type: RoleType
-
-    # ── input validation ───────────────────────────────────────────────────
 
     def _check_role_type(self, inp: AgentInput) -> tuple[bool, str]:
         if inp.role_type != self.role_type:
@@ -41,15 +39,7 @@ class BaseRole:
         raise NotImplementedError(f"{self.name}.run() is not implemented")
 
 
-# ── ResearchAgent ──────────────────────────────────────────────────────────
-
 class ResearchAgent(BaseRole):
-    """
-    Placeholder research role.
-
-    Input payload:  {"query": str}
-    Output result:  {"query": str, "findings": str}
-    """
     name      = "ResearchAgent"
     role_type = RoleType.research
 
@@ -57,7 +47,11 @@ class ResearchAgent(BaseRole):
         ok, err = self._check_role_type(inp)
         if not ok:
             return self._failure(inp, err)
-        query = inp.payload.get("query", "")
+        payload = inp.payload or {}
+        tool = payload.get("tool")
+        if tool == "file_metadata":
+            return self._run_file_metadata_tool(inp, payload)
+        query = payload.get("query", "")
         return AgentOutput(
             task_id=inp.task_id,
             role_type=self.role_type,
@@ -68,16 +62,50 @@ class ResearchAgent(BaseRole):
             success=True,
         )
 
+    def _run_file_metadata_tool(self, inp: AgentInput, payload: dict) -> AgentOutput:
+        path = payload.get("path", "")
+        safety_config_dict = payload.get("safety_config", {})
+        if isinstance(safety_config_dict, dict):
+            safety_config = SafetyConfig(**safety_config_dict)
+        else:
+            safety_config = safety_config_dict or SafetyConfig()
+        audit_event = AuditEvent(
+            event_id=str(uuid.uuid4()),
+            job_id=payload.get("job_id", "unknown"),
+            task_id=inp.task_id,
+            role_type=self.role_type,
+            proposed_tool_category=ToolCategory.research,
+            action="proposed_tool_call",
+            status=AuditStatus.pending,
+            message=f"ResearchAgent requested file_metadata tool for path={path!r}",
+        )
+        output = inspect_file_metadata(
+            task_id=inp.task_id,
+            relative_path=path,
+            safety_config=safety_config,
+            audit_event=audit_event,
+        )
+        if output.success and not output.blocked:
+            audit_event.status = AuditStatus.allowed
+        else:
+            audit_event.status = AuditStatus.blocked
+        audit_event.message = output.error_message or "File metadata access granted"
+        audit_event.timestamp = datetime.now(timezone.utc)
+        try:
+            store = StateStore()
+            store.append_audit_event(audit_event.job_id, audit_event)
+        except Exception:
+            pass
+        return AgentOutput(
+            task_id=inp.task_id,
+            role_type=self.role_type,
+            result=output.to_agent_output()["result"],
+            success=output.success,
+            error_message=output.error_message,
+        )
 
-# ── MemoryStateAgent ───────────────────────────────────────────────────────
 
 class MemoryStateAgent(BaseRole):
-    """
-    Placeholder memory/state role.
-
-    Input payload:  {"operation": "read"|"write", "key": str, "value": any}
-    Output result:  {"operation": str, "key": str, "value": str}
-    """
     name      = "MemoryStateAgent"
     role_type = RoleType.memory_state
 
@@ -99,15 +127,7 @@ class MemoryStateAgent(BaseRole):
         )
 
 
-# ── ExecutionAgent ─────────────────────────────────────────────────────────
-
 class ExecutionAgent(BaseRole):
-    """
-    Placeholder execution role.
-
-    Input payload:  {"action": str}
-    Output result:  {"action": str, "outcome": str}
-    """
     name      = "ExecutionAgent"
     role_type = RoleType.execution
 

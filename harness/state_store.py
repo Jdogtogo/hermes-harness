@@ -1,8 +1,5 @@
 """
 File-backed JSON state store for Hermes Multi-Agent Harness v1.
-
-All writes are atomic.  Each job has its own JSON file.
-Default state directory: /tmp/harness/state/
 """
 from __future__ import annotations
 
@@ -11,9 +8,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from harness.atomic_io import atomic_json_write
-from harness.job_models import HarnessError, HarnessJob, HarnessResult, JobStatus
+from harness.job_models import AuditEvent, HarnessError, HarnessJob, HarnessResult, JobStatus
 
 _DEFAULT_STATE_DIR = Path("/tmp/harness/state")
+
+
+class StateStoreError(Exception):
+    """Base error for StateStore operations."""
 
 
 class StateStore:
@@ -28,10 +29,20 @@ class StateStore:
         p = self._path(job_id)
         if not p.exists():
             raise FileNotFoundError(f"No job record for job_id={job_id!r}")
-        return json.loads(p.read_text(encoding="utf-8"))
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise StateStoreError(
+                f"Corrupted JSON in job record {job_id!r}: {exc}"
+            ) from exc
 
     def create_job_record(self, job: HarnessJob) -> None:
-        """Write the initial queued record for *job*."""
+        p = self._path(job.job_id)
+        if p.exists():
+            raise StateStoreError(
+                f"Job record for job_id={job.job_id!r} already exists "
+                f"at {p} — refusing to silently overwrite"
+            )
         record = {
             "job_id":            job.job_id,
             "status":            JobStatus.queued.value,
@@ -42,8 +53,9 @@ class StateStore:
             "finalised_at":      None,
             "validation_errors": [],
             "result":            None,
+            "audit_events":      [],
         }
-        atomic_json_write(self._path(job.job_id), record)
+        atomic_json_write(p, record)
 
     def update_job_status(self, job_id: str, status: JobStatus) -> None:
         record = self._load(job_id)
@@ -62,6 +74,23 @@ class StateStore:
         record["result"]       = result.model_dump()
         record["finalised_at"] = datetime.now(timezone.utc).isoformat()
         atomic_json_write(self._path(result.job_id), record)
+
+    def append_audit_event(self, job_id: str, event: AuditEvent) -> None:
+        record = self._load(job_id)
+        events = record.setdefault("audit_events", [])
+        events.append(event.model_dump())
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        atomic_json_write(self._path(job_id), record)
+
+    def read_job_audit_events(self, job_id: str) -> list[dict]:
+        record = self._load(job_id)
+        return record.get("audit_events", [])
+
+    def read_audit_log(self) -> list:
+        audit_path = self.state_dir / "_audit_log.json"
+        if not audit_path.exists():
+            return []
+        return json.loads(audit_path.read_text(encoding="utf-8"))
 
     def read_job_record(self, job_id: str) -> dict:
         return self._load(job_id)

@@ -1,8 +1,5 @@
 """
 Pydantic models for Hermes Multi-Agent Harness v1.
-
-All Harness v1 types live here.  The original ConfigResult (drift
-diagnostic) remains in /tmp/harness/schema.py and is not imported here.
 """
 from __future__ import annotations
 
@@ -12,8 +9,6 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-
-# ── Enumerations ────────────────────────────────────────────────────────────
 
 class JobStatus(str, Enum):
     queued             = "queued"
@@ -30,7 +25,12 @@ class RoleType(str, Enum):
     execution    = "execution"
 
 
-# ── Task / Job ───────────────────────────────────────────────────────────────
+class AuditStatus(str, Enum):
+    pending  = "pending"
+    allowed  = "allowed"
+    blocked  = "blocked"
+    rejected = "rejected"
+
 
 class HarnessTask(BaseModel):
     task_id:   str
@@ -65,12 +65,11 @@ class HarnessJob(BaseModel):
         return v
 
 
-# ── Agent I/O ────────────────────────────────────────────────────────────────
-
 class AgentInput(BaseModel):
     task_id:   str
     role_type: RoleType
     payload:   Dict[str, Any]
+
 
 class AgentOutput(BaseModel):
     task_id:       str
@@ -79,8 +78,6 @@ class AgentOutput(BaseModel):
     success:       bool = True
     error_message: Optional[str] = None
 
-
-# ── Result / Error ────────────────────────────────────────────────────────────
 
 class HarnessError(BaseModel):
     job_id:     str
@@ -100,12 +97,11 @@ class HarnessResult(BaseModel):
     completed_at: Optional[str]             = None
 
 
-# ── Safety & Auditing ───────────────────────────────────────────────────────
-
 class ToolCategory(str, Enum):
-    research = "research"
-    memory = "memory"
+    research  = "research"
+    memory    = "memory"
     execution = "execution"
+
 
 class SafetyConfig(BaseModel):
     deterministic_only: bool = True
@@ -115,6 +111,7 @@ class SafetyConfig(BaseModel):
     max_steps: int = 5
     timeout_seconds: int = 60
 
+
 class AuditEvent(BaseModel):
     event_id: str
     job_id: str
@@ -122,6 +119,15 @@ class AuditEvent(BaseModel):
     role_type: RoleType
     proposed_tool_category: ToolCategory | None
     action: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    status: str
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+    status: AuditStatus
     message: str
+
+    @field_validator("timestamp")
+    @classmethod
+    def timestamp_must_be_utc_aware(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("timestamp must be timezone-aware (use timezone.utc)")
+        return v
