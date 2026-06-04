@@ -1,0 +1,10 @@
+{
+  "decision": "approved",
+  "phase": "import-path-fix",
+  "maturity_classification": "Stable",
+  "blocking_issues": [],
+  "accepted_items": ["import-path-fix"],
+  "required_next_action": "None",
+  "next_instruction_for_hermes": "Proceed to tool wiring",
+  "should_continue": true
+}

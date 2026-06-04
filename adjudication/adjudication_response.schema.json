@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["approved", "rejected", "revise", "stop"]
+    },
+    "phase": { "type": "string" },
+    "maturity_classification": { "type": "string" },
+    "blocking_issues": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "accepted_items": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "required_next_action": { "type": "string" },
+    "next_instruction_for_hermes": { "type": "string" },
+    "should_continue": { "type": "boolean" }
+  },
+  "required": [
+    "decision",
+    "phase",
+    "maturity_classification",
+    "blocking_issues",
+    "accepted_items",
+    "required_next_action",
+    "next_instruction_for_hermes",
+    "should_continue"
+  ]
+}

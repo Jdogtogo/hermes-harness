@@ -7,7 +7,6 @@ from typing import List, Tuple
 
 from harness.job_models import HarnessJob, RoleType, SafetyConfig, ToolCategory
 
-
 _ROLE_CATEGORY_MAP: dict[RoleType, set[ToolCategory]] = {
     RoleType.research:     {ToolCategory.research},
     RoleType.memory_state: {ToolCategory.memory},
@@ -48,7 +47,11 @@ def validate_tool_access(
     has_audit_context: bool = False
 ) -> tuple[bool, str]:
     if config.deterministic_only:
-        return False, "Guardrail violation: Deterministic mode is active (deterministic_only=True)"
+        # In deterministic mode, only allow the predefined role/category mappings (the stub roles)
+        if category in _ROLE_CATEGORY_MAP.get(role_type, set()):
+            return True, "Access granted (deterministic mode allows stub roles)"
+        else:
+            return False, "Guardrail violation: Deterministic mode is active (deterministic_only=True)"
     if not config.allow_real_tool_calls:
         return False, "Guardrail violation: Real tool calls are disabled (allow_real_tool_calls=False)"
     allowed_categories = _ROLE_CATEGORY_MAP.get(role_type, set())

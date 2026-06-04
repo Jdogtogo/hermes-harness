@@ -10,7 +10,7 @@ from pathlib import Path
 from harness.atomic_io import atomic_json_write
 from harness.job_models import AuditEvent, HarnessError, HarnessJob, HarnessResult, JobStatus
 
-_DEFAULT_STATE_DIR = Path("/tmp/harness/state")
+_DEFAULT_STATE_DIR = Path("/home/jfroh/hermes/harness/state")
 
 
 class StateStoreError(Exception):
@@ -29,6 +29,8 @@ class StateStore:
         p = self._path(job_id)
         if not p.exists():
             raise FileNotFoundError(f"No job record for job_id={job_id!r}")
+        if p.stat().st_size == 0:
+            raise StateStoreError(f"Job record {job_id!r} is zero-byte (corrupted)")
         try:
             return json.loads(p.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
@@ -74,6 +76,9 @@ class StateStore:
         record["result"]       = result.model_dump()
         record["finalised_at"] = datetime.now(timezone.utc).isoformat()
         atomic_json_write(self._path(result.job_id), record)
+
+    def write_audit_event(self, job_id: str, event: AuditEvent) -> None:
+        self.append_audit_event(job_id, event)
 
     def append_audit_event(self, job_id: str, event: AuditEvent) -> None:
         record = self._load(job_id)
