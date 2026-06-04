@@ -66,9 +66,11 @@ class HarnessJob(BaseModel):
 
 
 class AgentInput(BaseModel):
-    task_id:   str
-    role_type: RoleType
-    payload:   Dict[str, Any]
+    task_id:       str
+    role_type:     RoleType
+    payload:       Dict[str, Any]
+    safety_config: Optional["SafetyConfig"] = None
+    has_audit_context: bool = False
 
 
 class AgentOutput(BaseModel):

@@ -16,11 +16,12 @@ from harness.job_models import (
     SafetyConfig,
     ToolCategory,
 )
-from harness.research_tools import inspect_file_metadata
+
 from harness.roles import ExecutionAgent, MemoryStateAgent, ResearchAgent
 from harness.state_store import StateStore, StateStoreError
 from harness.supervisor import Supervisor
 from harness.validators import validate_job, validate_tool_access
+from harness.research_tools import inspect_file_metadata
 
 __all__ = [
     "HarnessJob", "HarnessTask", "AgentInput", "AgentOutput",

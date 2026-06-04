@@ -3,6 +3,7 @@ Supervisor layer for Hermes Multi-Agent Harness v1.
 """
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 
 from pydantic import ValidationError
@@ -29,13 +30,46 @@ _ROLE_CATEGORY_MAP: dict[RoleType, set[ToolCategory]] = {
 
 
 class Supervisor:
-    def __init__(self, safety_config: SafetyConfig | None = None, state_store: StateStore | None = None) -> None:
+    def __init__(
+        self,
+        safety_config: SafetyConfig | None = None,
+        state_store: StateStore | None = None,
+    ) -> None:
         self.safety_config = safety_config if safety_config is not None else SafetyConfig()
         self.state_store = state_store
 
+    def _new_event_id(self, job_id: str, task_id: str) -> str:
+        return f"evt-{job_id}-{task_id}-{uuid.uuid4().hex[:8]}"
+
+    def _write_audit(
+        self,
+        job_id: str,
+        task_id: str,
+        role_type: RoleType,
+        category: ToolCategory | None,
+        action: str,
+        status: AuditStatus,
+        message: str,
+    ) -> None:
+        if self.state_store is None:
+            return
+        self.state_store.write_audit_event(
+            job_id,
+            AuditEvent(
+                event_id=self._new_event_id(job_id, task_id),
+                job_id=job_id,
+                task_id=task_id,
+                role_type=role_type,
+                proposed_tool_category=category,
+                action=action,
+                status=status,
+                message=message,
+            ),
+        )
+
     def process(self, job: HarnessJob) -> HarnessResult:
-        errors: list[HarnessError]  = []
-        outputs: list[AgentOutput]  = []
+        errors: list[HarnessError] = []
+        outputs: list[AgentOutput] = []
 
         if len(job.tasks) > self.safety_config.max_steps:
             errors.append(HarnessError(
@@ -100,61 +134,65 @@ class Supervisor:
                 errors=errors,
             )
 
-        for task in job.tasks:
-            # Map role_type to ToolCategory
-            category = list(_ROLE_CATEGORY_MAP.get(task.role_type, {ToolCategory.execution}))[0]
+        has_audit = self.state_store is not None
 
-            # Validate tool access
-            allowed, msg = validate_tool_access(
-                self.safety_config,
-                task.role_type,
-                category,
-                has_audit_context=True if self.state_store else False
-            )
-            if not allowed:
-                # Log audit event
-                if self.state_store:
-                    self.state_store.write_audit_event(job.job_id, AuditEvent(
-                        event_id=f"evt-{job.job_id}-{task.task_id}",
-                        job_id=job.job_id,
-                        task_id=task.task_id,
-                        role_type=task.role_type,
-                        proposed_tool_category=category,
-                        action="tool_access_request",
-                        status=AuditStatus.blocked,
-                        message=msg,
-                    ))
-                
-                errors.append(HarnessError(
-                    job_id=job.job_id,
-                    task_id=task.task_id,
-                    error_type="tool_access_blocked",
-                    message=msg,
-                ))
-                return HarnessResult(
-                    job_id=job.job_id,
-                    status=JobStatus.failed_execution,
-                    task_outputs=outputs,
-                    errors=errors,
+        for task in job.tasks:
+            is_real_tool_request = "tool" in task.payload
+
+            if is_real_tool_request:
+                # Real tool path: validate, audit, gate.
+                category = list(
+                    _ROLE_CATEGORY_MAP.get(task.role_type, {ToolCategory.execution})
+                )[0]
+
+                self._write_audit(
+                    job.job_id, task.task_id, task.role_type, category,
+                    action="tool_access_attempted",
+                    status=AuditStatus.pending,
+                    message=f"Tool request: {task.payload.get('tool')!r}",
                 )
 
-            # Log allowed event
-            if self.state_store:
-                self.state_store.write_audit_event(job.job_id, AuditEvent(
-                    event_id=f"evt-{job.job_id}-{task.task_id}",
-                    job_id=job.job_id,
-                    task_id=task.task_id,
-                    role_type=task.role_type,
-                    proposed_tool_category=category,
-                    action="tool_access_request",
+                allowed, msg = validate_tool_access(
+                    self.safety_config,
+                    task.role_type,
+                    category,
+                    has_audit_context=has_audit,
+                )
+                if not allowed:
+                    self._write_audit(
+                        job.job_id, task.task_id, task.role_type, category,
+                        action="tool_access_denied",
+                        status=AuditStatus.blocked,
+                        message=msg,
+                    )
+                    errors.append(HarnessError(
+                        job_id=job.job_id,
+                        task_id=task.task_id,
+                        error_type="tool_access_blocked",
+                        message=msg,
+                    ))
+                    return HarnessResult(
+                        job_id=job.job_id,
+                        status=JobStatus.failed_execution,
+                        task_outputs=outputs,
+                        errors=errors,
+                    )
+
+                self._write_audit(
+                    job.job_id, task.task_id, task.role_type, category,
+                    action="tool_access_allowed",
                     status=AuditStatus.allowed,
                     message="Access granted",
-                ))
+                )
+            else:
+                category = None  # stub execution; no tool category relevant
 
             inp = AgentInput(
                 task_id=task.task_id,
                 role_type=task.role_type,
                 payload=task.payload,
+                safety_config=self.safety_config,
+                has_audit_context=has_audit,
             )
             role = _ROLE_REGISTRY.get(task.role_type)
             if role is None:
@@ -185,6 +223,7 @@ class Supervisor:
                     task_outputs=outputs,
                     errors=errors,
                 )
+
             try:
                 AgentOutput.model_validate(output.model_dump())
             except ValidationError as exc:
@@ -200,6 +239,23 @@ class Supervisor:
                     task_outputs=outputs,
                     errors=errors,
                 )
+
+            if is_real_tool_request:
+                if output.success:
+                    self._write_audit(
+                        job.job_id, task.task_id, task.role_type, category,
+                        action="tool_execution_succeeded",
+                        status=AuditStatus.allowed,
+                        message="Tool completed successfully",
+                    )
+                else:
+                    self._write_audit(
+                        job.job_id, task.task_id, task.role_type, category,
+                        action="tool_execution_failed",
+                        status=AuditStatus.rejected,
+                        message=output.error_message or "role returned success=False",
+                    )
+
             if not output.success:
                 errors.append(HarnessError(
                     job_id=job.job_id,

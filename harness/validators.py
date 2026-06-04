@@ -47,11 +47,9 @@ def validate_tool_access(
     has_audit_context: bool = False
 ) -> tuple[bool, str]:
     if config.deterministic_only:
-        # In deterministic mode, only allow the predefined role/category mappings (the stub roles)
-        if category in _ROLE_CATEGORY_MAP.get(role_type, set()):
-            return True, "Access granted (deterministic mode allows stub roles)"
-        else:
-            return False, "Guardrail violation: Deterministic mode is active (deterministic_only=True)"
+        # Real tool calls are always blocked in deterministic mode.
+        # Stub execution bypasses validate_tool_access entirely (no "tool" key in payload).
+        return False, "Guardrail violation: Deterministic mode is active (deterministic_only=True)"
     if not config.allow_real_tool_calls:
         return False, "Guardrail violation: Real tool calls are disabled (allow_real_tool_calls=False)"
     allowed_categories = _ROLE_CATEGORY_MAP.get(role_type, set())

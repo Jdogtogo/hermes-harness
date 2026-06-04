@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,6 +20,7 @@ from harness.job_models  import (
     HarnessJob, HarnessResult, HarnessTask, JobStatus, RoleType,
     SafetyConfig, ToolCategory,
 )
+from harness.research_tools import HARNESS_ROOT, inspect_file_metadata
 from harness.roles        import ExecutionAgent, MemoryStateAgent, ResearchAgent
 from harness.state_store  import StateStore, StateStoreError
 from harness.supervisor   import Supervisor
@@ -42,6 +45,19 @@ def simple_job():
             payload={"query": "test"},
         )],
     )
+
+@pytest.fixture
+def permissive_config():
+    return SafetyConfig(
+        deterministic_only=False,
+        allow_real_tool_calls=True,
+        allowed_tool_categories=[ToolCategory.research],
+        require_audit_log=False,
+    )
+
+@pytest.fixture
+def permissive_supervisor(permissive_config, store):
+    return Supervisor(safety_config=permissive_config, state_store=store)
 
 
 # ---- Schema validation -------------------------------------------------
@@ -316,19 +332,31 @@ def test_default_safety_config_blocks_all_real_tool_calls():
     assert config.require_audit_log is True
 
 
-def test_deterministic_only_allows_stub_roles():
+def test_deterministic_only_blocks_real_tool_access():
+    """validate_tool_access always blocks when deterministic_only=True."""
     config = SafetyConfig(deterministic_only=True)
     allowed, msg = validate_tool_access(config, RoleType.research, ToolCategory.research)
-    assert allowed is True
-    assert "deterministic mode allows stub roles" in msg.lower()
-
-
-def test_deterministic_only_blocks_non_stub_access():
-    config = SafetyConfig(deterministic_only=True)
-    # Testing a non-existent role/category mapping pair
-    allowed, msg = validate_tool_access(config, RoleType.research, ToolCategory.execution)
     assert allowed is False
     assert "deterministic_only" in msg.lower()
+
+
+def test_deterministic_only_blocks_all_categories():
+    config = SafetyConfig(deterministic_only=True)
+    for cat in ToolCategory:
+        allowed, msg = validate_tool_access(config, RoleType.research, cat)
+        assert allowed is False, f"Expected block for {cat}"
+        assert "deterministic_only" in msg.lower()
+
+
+def test_deterministic_stubs_still_run_without_validate_tool_access(supervisor):
+    """Stub tasks do NOT have 'tool' in payload; supervisor skips validate_tool_access."""
+    job = HarnessJob(
+        job_id="job-stub-pass",
+        tasks=[HarnessTask(task_id="t1", role_type=RoleType.research, payload={"query": "q"})],
+    )
+    result = supervisor.process(job)
+    assert result.status == JobStatus.completed
+    assert "STUB" in result.task_outputs[0].result["findings"]
 
 
 def test_allow_real_tool_calls_false_blocks_tool_access():
@@ -505,3 +533,264 @@ def test_validate_tool_access_enforces_role_type_mapping_research():
     allowed, msg = validate_tool_access(config, RoleType.research, ToolCategory.memory)
     assert allowed is False
     assert "not allowed to request" in msg.lower()
+
+
+# ---- Metadata tool safety gates ----------------------------------------
+
+def test_default_config_blocks_metadata_tool_via_supervisor(store):
+    """Default SafetyConfig (deterministic_only=True) must block metadata tool requests."""
+    job = HarnessJob(
+        job_id=f"job-meta-default-{uuid.uuid4().hex[:8]}",
+        tasks=[HarnessTask(
+            task_id="t1",
+            role_type=RoleType.research,
+            payload={"tool": "inspect_file_metadata", "path": "harness/__init__.py"},
+        )],
+    )
+    store.create_job_record(job)
+    sup = Supervisor(state_store=store)  # default: deterministic_only=True
+    result = sup.process(job)
+    assert result.status == JobStatus.failed_execution
+    assert any("deterministic_only" in e.message for e in result.errors)
+
+
+def test_deterministic_only_true_blocks_metadata_tool_via_supervisor(store):
+    cfg = SafetyConfig(deterministic_only=True)
+    job = HarnessJob(
+        job_id=f"job-det-only-{uuid.uuid4().hex[:8]}",
+        tasks=[HarnessTask(
+            task_id="t1", role_type=RoleType.research,
+            payload={"tool": "inspect_file_metadata", "path": "harness/__init__.py"},
+        )],
+    )
+    store.create_job_record(job)
+    result = Supervisor(safety_config=cfg, state_store=store).process(job)
+    assert result.status == JobStatus.failed_execution
+    assert any("deterministic_only" in e.message for e in result.errors)
+
+
+def test_allow_real_tool_calls_false_blocks_metadata_tool_via_supervisor(store):
+    cfg = SafetyConfig(
+        deterministic_only=False,
+        allow_real_tool_calls=False,
+        allowed_tool_categories=[ToolCategory.research],
+    )
+    job = HarnessJob(
+        job_id=f"job-no-real-{uuid.uuid4().hex[:8]}",
+        tasks=[HarnessTask(
+            task_id="t1", role_type=RoleType.research,
+            payload={"tool": "inspect_file_metadata", "path": "harness/__init__.py"},
+        )],
+    )
+    store.create_job_record(job)
+    result = Supervisor(safety_config=cfg, state_store=store).process(job)
+    assert result.status == JobStatus.failed_execution
+    assert any("allow_real_tool_calls" in e.message for e in result.errors)
+
+
+def test_missing_research_allowlist_blocks_metadata_tool_via_supervisor(store):
+    cfg = SafetyConfig(
+        deterministic_only=False,
+        allow_real_tool_calls=True,
+        allowed_tool_categories=[],  # research not in list
+        require_audit_log=False,
+    )
+    job = HarnessJob(
+        job_id=f"job-no-cat-{uuid.uuid4().hex[:8]}",
+        tasks=[HarnessTask(
+            task_id="t1", role_type=RoleType.research,
+            payload={"tool": "inspect_file_metadata", "path": "harness/__init__.py"},
+        )],
+    )
+    store.create_job_record(job)
+    result = Supervisor(safety_config=cfg, state_store=store).process(job)
+    assert result.status == JobStatus.failed_execution
+    assert any("allowlist" in e.message for e in result.errors)
+
+
+def test_allowed_config_permits_metadata_read(store, permissive_config):
+    # Use a known file inside HARNESS_ROOT — metadata only, no content returned.
+    job = HarnessJob(
+        job_id=f"job-meta-ok-{uuid.uuid4().hex[:8]}",
+        tasks=[HarnessTask(
+            task_id="t1", role_type=RoleType.research,
+            payload={"tool": "inspect_file_metadata", "path": "harness/__init__.py"},
+        )],
+    )
+    store.create_job_record(job)
+    result = Supervisor(safety_config=permissive_config, state_store=store).process(job)
+    assert result.status == JobStatus.completed
+    meta = result.task_outputs[0].result
+    assert meta["exists"] is True
+    assert "size_bytes" in meta
+    assert "extension" in meta
+    assert "last_modified" in meta
+
+
+# ---- inspect_file_metadata path rejection tests ------------------------
+
+def test_path_traversal_rejected():
+    result = inspect_file_metadata("../../etc/passwd")
+    assert result["status"] == "denied"
+    assert "traversal" in result.get("reason", "").lower()
+
+
+def test_absolute_path_escape_rejected():
+    result = inspect_file_metadata("/etc/passwd")
+    assert result["status"] == "denied"
+    assert "harness root" in result.get("reason", "").lower()
+
+
+def test_symlink_escape_rejected(tmp_path):
+    """Symlink pointing outside harness root must be rejected after resolution."""
+    target_outside = tmp_path / "outside.txt"
+    target_outside.write_text("secret", encoding="utf-8")
+    link_inside = HARNESS_ROOT / "symlink_test_escape.lnk"
+    try:
+        link_inside.symlink_to(target_outside)
+        result = inspect_file_metadata("symlink_test_escape.lnk")
+        assert result["status"] == "denied"
+        assert "root" in result.get("reason", "").lower()
+    finally:
+        if link_inside.exists() or link_inside.is_symlink():
+            link_inside.unlink(missing_ok=True)
+
+
+def test_env_file_rejected():
+    result = inspect_file_metadata(".env")
+    assert result["status"] == "denied"
+
+
+def test_pem_file_rejected():
+    result = inspect_file_metadata("server.pem")
+    assert result["status"] == "denied"
+
+
+def test_key_file_rejected():
+    result = inspect_file_metadata("id_rsa.key")
+    assert result["status"] == "denied"
+
+
+def test_p12_file_rejected():
+    result = inspect_file_metadata("cert.p12")
+    assert result["status"] == "denied"
+
+
+def test_credential_file_rejected():
+    result = inspect_file_metadata("credentials.json")
+    assert result["status"] == "denied"
+
+
+def test_directory_rejected():
+    result = inspect_file_metadata("harness")
+    assert result["status"] == "denied"
+    assert "director" in result.get("reason", "").lower()
+
+
+# ---- No content returned -----------------------------------------------
+
+def test_no_content_key_in_metadata_result():
+    result = inspect_file_metadata("harness/__init__.py")
+    forbidden = {"content", "preview", "snippet", "text", "first_bytes", "data", "lines"}
+    assert result["status"] == "ok"
+    assert result.get("exists") is True
+    overlap = set(result.keys()) & forbidden
+    assert overlap == set(), f"Forbidden keys present: {overlap}"
+
+
+def test_no_file_mutation_occurs(tmp_path):
+    canary = tmp_path / "canary.txt"
+    canary.write_text("untouched", encoding="utf-8")
+    # File is outside harness root — must be rejected, canary must be unchanged
+    result = inspect_file_metadata(str(canary))
+    assert result["status"] == "denied"
+    assert canary.read_text() == "untouched"
+
+
+def test_line_count_is_integer_for_text_file():
+    result = inspect_file_metadata("harness/__init__.py")
+    assert result.get("exists") is True
+    lc = result.get("line_count")
+    assert isinstance(lc, int) and lc > 0
+
+
+# ---- Audit events written for metadata tool ----------------------------
+
+def test_audit_events_written_for_allowed_metadata_request(store, permissive_config):
+    job = HarnessJob(
+        job_id=f"job-audit-ok-{uuid.uuid4().hex[:8]}",
+        tasks=[HarnessTask(
+            task_id="t1", role_type=RoleType.research,
+            payload={"tool": "inspect_file_metadata", "path": "harness/__init__.py"},
+        )],
+    )
+    store.create_job_record(job)
+    Supervisor(safety_config=permissive_config, state_store=store).process(job)
+
+    events = store.read_job_audit_events(job.job_id)
+    actions = {e["action"] for e in events}
+    assert "tool_access_attempted" in actions
+    assert "tool_access_allowed"   in actions
+    assert "tool_execution_succeeded" in actions
+
+
+def test_audit_events_written_for_denied_metadata_request(store):
+    job = HarnessJob(
+        job_id=f"job-audit-deny-{uuid.uuid4().hex[:8]}",
+        tasks=[HarnessTask(
+            task_id="t1", role_type=RoleType.research,
+            payload={"tool": "inspect_file_metadata", "path": "harness/__init__.py"},
+        )],
+    )
+    store.create_job_record(job)
+    Supervisor(state_store=store).process(job)  # default: deterministic_only=True
+
+    events = store.read_job_audit_events(job.job_id)
+    actions = {e["action"] for e in events}
+    assert "tool_access_attempted" in actions
+    assert "tool_access_denied"    in actions
+
+
+# ---- Smoke test passes -------------------------------------------------
+
+def test_smoke_test_passes():
+    result = subprocess.run(
+        ["/home/jfroh/hermes/harness_venv/bin/python",
+         "/home/jfroh/hermes/harness/run_harness_smoke_test.py"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, (
+        f"Smoke test exited {result.returncode}\n"
+        f"stdout: {result.stdout[-1000:]}\nstderr: {result.stderr[-500:]}"
+    )
+
+
+# ---- Banned path references --------------------------------------------
+
+def test_no_tmp_harness_references_in_source():
+    """Confirm the banned stale path does not appear in source, tests, smoke test, or conftest."""
+    root = Path("/home/jfroh/hermes/harness")
+    search_paths = [
+        root / "harness",
+        root / "tests",
+        root / "run_harness_smoke_test.py",
+        root / "conftest.py",
+    ]
+    # Build the banned pattern dynamically to avoid the test file matching itself.
+    banned = "/tmp" + "/harness"
+    found = []
+    for sp in search_paths:
+        if sp.is_dir():
+            for f in sp.rglob("*.py"):
+                if f == Path(__file__):
+                    continue  # skip this file — it contains the pattern by necessity
+                text = f.read_text(encoding="utf-8", errors="ignore")
+                if banned in text:
+                    found.append(str(f))
+        elif sp.is_file():
+            if Path(sp) == Path(__file__):
+                continue
+            text = sp.read_text(encoding="utf-8", errors="ignore")
+            if banned in text:
+                found.append(str(sp))
+    assert found == [], f"Banned path found in: {found}"

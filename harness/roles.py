@@ -3,14 +3,10 @@ Minimal role abstractions for Hermes Multi-Agent Harness v1.
 """
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
-
 from harness.job_models import (
-    AgentInput, AgentOutput, AuditEvent, AuditStatus, RoleType, SafetyConfig, ToolCategory,
+    AgentInput, AgentOutput, RoleType, SafetyConfig, ToolCategory,
 )
 from harness.research_tools import inspect_file_metadata
-from harness.state_store import StateStore
 
 
 class BaseRole:
@@ -47,11 +43,14 @@ class ResearchAgent(BaseRole):
         ok, err = self._check_role_type(inp)
         if not ok:
             return self._failure(inp, err)
-        payload = inp.payload or {}
-        tool = payload.get("tool")
-        if tool == "file_metadata":
-            return self._run_file_metadata_tool(inp, payload)
-        query = payload.get("query", "")
+
+        tool = inp.payload.get("tool")
+
+        if tool == "inspect_file_metadata":
+            return self._run_metadata_tool(inp)
+
+        # Default deterministic stub — no real tool calls.
+        query = inp.payload.get("query", "")
         return AgentOutput(
             task_id=inp.task_id,
             role_type=self.role_type,
@@ -62,46 +61,50 @@ class ResearchAgent(BaseRole):
             success=True,
         )
 
-    def _run_file_metadata_tool(self, inp: AgentInput, payload: dict) -> AgentOutput:
-        path = payload.get("path", "")
-        safety_config_dict = payload.get("safety_config", {})
-        if isinstance(safety_config_dict, dict):
-            safety_config = SafetyConfig(**safety_config_dict)
-        else:
-            safety_config = safety_config_dict or SafetyConfig()
-        audit_event = AuditEvent(
-            event_id=str(uuid.uuid4()),
-            job_id=payload.get("job_id", "unknown"),
-            task_id=inp.task_id,
-            role_type=self.role_type,
-            proposed_tool_category=ToolCategory.research,
-            action="proposed_tool_call",
-            status=AuditStatus.pending,
-            message=f"ResearchAgent requested file_metadata tool for path={path!r}",
-        )
-        output = inspect_file_metadata(
-            task_id=inp.task_id,
-            relative_path=path,
-            safety_config=safety_config,
-            audit_event=audit_event,
-        )
-        if output.success and not output.blocked:
-            audit_event.status = AuditStatus.allowed
-        else:
-            audit_event.status = AuditStatus.blocked
-        audit_event.message = output.error_message or "File metadata access granted"
-        audit_event.timestamp = datetime.now(timezone.utc)
-        try:
-            store = StateStore()
-            store.append_audit_event(audit_event.job_id, audit_event)
-        except Exception:
-            pass
+    def _run_metadata_tool(self, inp: AgentInput) -> AgentOutput:
+        """Defence-in-depth gate before calling inspect_file_metadata."""
+        cfg: SafetyConfig | None = inp.safety_config
+
+        if cfg is None:
+            return self._failure(inp, "Metadata tool blocked: no SafetyConfig provided")
+        if cfg.deterministic_only:
+            return self._failure(
+                inp,
+                "Metadata tool blocked: SafetyConfig.deterministic_only is True",
+            )
+        if not cfg.allow_real_tool_calls:
+            return self._failure(
+                inp,
+                "Metadata tool blocked: SafetyConfig.allow_real_tool_calls is False",
+            )
+        if ToolCategory.research not in cfg.allowed_tool_categories:
+            return self._failure(
+                inp,
+                "Metadata tool blocked: ToolCategory.research not in allowed_tool_categories",
+            )
+        if cfg.require_audit_log and not inp.has_audit_context:
+            return self._failure(
+                inp,
+                "Metadata tool blocked: audit context required but not present",
+            )
+
+        path: str = inp.payload.get("path", "")
+        meta = inspect_file_metadata(path)
+
+        if meta.get("status") == "denied":
+            return AgentOutput(
+                task_id=inp.task_id,
+                role_type=self.role_type,
+                result=meta,
+                success=False,
+                error_message=f"inspect_file_metadata denied: {meta.get('reason', '')}",
+            )
+
         return AgentOutput(
             task_id=inp.task_id,
             role_type=self.role_type,
-            result=output.to_agent_output()["result"],
-            success=output.success,
-            error_message=output.error_message,
+            result=meta,
+            success=True,
         )
 
 
