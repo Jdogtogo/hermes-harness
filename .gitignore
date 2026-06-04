@@ -8,3 +8,4 @@ harness_venv/
 .venv/
 venv/
 .git/
+legacy_flat_layout/
