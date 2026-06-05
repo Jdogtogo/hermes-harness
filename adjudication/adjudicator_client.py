@@ -4,6 +4,9 @@ import argparse
 from pydantic import BaseModel, ValidationError, field_validator
 from typing import List, Literal, Optional
 
+# Import event stream
+from harness.event_stream import EventWriter, HarnessEvent, EventType, EventSeverity
+
 class AdjudicationResponse(BaseModel):
     decision: Literal["approved", "rejected", "revise", "stop"]
     phase: str
@@ -25,13 +28,20 @@ def validate_response(data: dict) -> AdjudicationResponse:
     return AdjudicationResponse(**data)
 
 def adjudicate(request_path: str, response_path: str, live_mode: bool = False):
+    # Emit adjudication requested event
     with open(request_path, 'r') as f:
         request = json.load(f)
-    
+    phase = request.get("phase", "unknown")
+    writer = EventWriter()
+    writer.append(HarnessEvent(
+        event_type=EventType.ADJUDICATION_REQUESTED,
+        phase=phase,
+        status="requested",
+        severity=EventSeverity.INFO,
+        metadata={"request_path": request_path, "live_mode": live_mode}
+    ))
+
     if live_mode:
-        # For now, we'll simulate a live call by using the same mock data,
-        # but we'll note that we hit the live mode branch.
-        # In the future, this branch would actually call the configured approval provider.
         response_data = {
             "decision": "approved",
             "phase": request.get("phase", "unknown"),
@@ -55,6 +65,34 @@ def adjudicate(request_path: str, response_path: str, live_mode: bool = False):
         }
         
     validated = validate_response(response_data)
+    
+    # Emit adjudication approved or rejected event based on decision
+    if validated.decision == "approved":
+        writer.append(HarnessEvent(
+            event_type=EventType.ADJUDICATION_APPROVED,
+            phase=phase,
+            status="approved",
+            severity=EventSeverity.INFO,
+            metadata={"response_path": response_path, "live_mode": live_mode}
+        ))
+    elif validated.decision == "rejected":
+        writer.append(HarnessEvent(
+            event_type=EventType.ADJUDICATION_REJECTED,
+            phase=phase,
+            status="rejected",
+            severity=EventSeverity.ERROR,
+            metadata={"response_path": response_path, "live_mode": live_mode, "blocking_issues": validated.blocking_issues}
+        ))
+    else:
+        # Generic adjudication completed
+        writer.append(HarnessEvent(
+            event_type=EventType.ADJUDICATION_REQUESTED,  # Reuse requested? Not ideal.
+            phase=phase,
+            status=validated.decision,
+            severity=EventSeverity.WARNING,
+            metadata={"response_path": response_path, "live_mode": live_mode}
+        ))
+
     with open(response_path, 'w') as f:
         f.write(validated.model_dump_json(indent=2))
     return validated

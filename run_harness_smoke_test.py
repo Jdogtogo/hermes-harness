@@ -62,121 +62,135 @@ def run_section(title: str) -> None:
     print(f"\n[{title}]")
 
 def run_smoke() -> int:
+    from harness.event_stream import EventWriter, HarnessEvent, EventType, EventSeverity
+    writer = EventWriter()
+    writer.append(HarnessEvent(event_type=EventType.PHASE_STARTED, phase="smoke_test", status="started", severity=EventSeverity.INFO))
     results: list[tuple[str, bool, str]] = []
-
-    # Section 1: Stub agents complete
-    run_section("Stub agents")
-    sup_default = Supervisor()
-    job_stubs = HarnessJob(
-        job_id=f"smoke-stubs-{uuid.uuid4().hex[:8]}",
-        tasks=[
-            HarnessTask(task_id="r1", role_type=RoleType.research,     payload={"query": "smoke test"}),
-            HarnessTask(task_id="m1", role_type=RoleType.memory_state, payload={"operation": "read", "key": "k"}),
-            HarnessTask(task_id="e1", role_type=RoleType.execution,    payload={"action": "noop"}),
-        ],
-    )
-    result_stubs = sup_default.process(job_stubs)
-    check(results, "research stub completes",      result_stubs.status == JobStatus.completed)
-    check(results, "all three stubs complete",     len(result_stubs.task_outputs) == 3)
-    check(results, "research stub has STUB text",  "STUB" in result_stubs.task_outputs[0].result.get("findings", ""))
-    check(results, "memory stub has STUB text",    "STUB" in result_stubs.task_outputs[1].result.get("value", ""))
-    check(results, "execution stub has STUB text", "STUB" in result_stubs.task_outputs[2].result.get("outcome", ""))
-
-    # Section 2: StateStore round-trip
-    run_section("StateStore round-trip")
-    with tempfile.TemporaryDirectory() as tmpdir:
-        store = StateStore(state_dir=Path(tmpdir) / "state")
-        job_st = HarnessJob(
-            job_id=f"smoke-store-{uuid.uuid4().hex[:8]}",
-            tasks=[HarnessTask(task_id="s1", role_type=RoleType.research, payload={"query": "state test"})],
+    
+    try:
+        # Section 1: Stub agents complete
+        run_section("Stub agents")
+        sup_default = Supervisor()
+        job_stubs = HarnessJob(
+            job_id=f"smoke-stubs-{uuid.uuid4().hex[:8]}",
+            tasks=[
+                HarnessTask(task_id="r1", role_type=RoleType.research,     payload={"query": "smoke test"}),
+                HarnessTask(task_id="m1", role_type=RoleType.memory_state, payload={"operation": "read", "key": "k"}),
+                HarnessTask(task_id="e1", role_type=RoleType.execution,    payload={"action": "noop"}),
+            ],
         )
-        store.create_job_record(job_st)
-        result_st = Supervisor(state_store=store).process(job_st)
-        store.write_final_result(result_st)
-        record = store.read_job_record(job_st.job_id)
-        check(results, "StateStore job created",      record["job_id"] == job_st.job_id)
-        check(results, "StateStore status completed", record["status"] == JobStatus.completed.value)
-        check(results, "StateStore finalised_at set", record["finalised_at"] is not None)
-        check(results, "StateStore result not None",  record["result"] is not None)
+        result_stubs = sup_default.process(job_stubs)
+        check(results, "research stub completes",      result_stubs.status == JobStatus.completed)
+        check(results, "all three stubs complete",     len(result_stubs.task_outputs) == 3)
+        check(results, "research stub has STUB text",  "STUB" in result_stubs.task_outputs[0].result.get("findings", ""))
+        check(results, "memory stub has STUB text",    "STUB" in result_stubs.task_outputs[1].result.get("value", ""))
+        check(results, "execution stub has STUB text", "STUB" in result_stubs.task_outputs[2].result.get("outcome", ""))
 
-    # Section 3: Metadata tool
-    run_section("Metadata tool — allowed path")
-    permissive_cfg = SafetyConfig(
-        deterministic_only=False,
-        allow_real_tool_calls=True,
-        allowed_tool_categories=[ToolCategory.research],
-        require_audit_log=False,
-    )
-    probe_path = "harness/__init__.py"
-    with tempfile.TemporaryDirectory() as tmpdir:
-        store_m = StateStore(state_dir=Path(tmpdir) / "state")
-        job_m = HarnessJob(
-            job_id=f"smoke-meta-{uuid.uuid4().hex[:8]}",
-            tasks=[HarnessTask(
-                task_id="meta1",
-                role_type=RoleType.research,
-                payload={"tool": "inspect_file_metadata", "path": probe_path},
-            )],
+        # Section 2: StateStore round-trip
+        run_section("StateStore round-trip")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = StateStore(state_dir=Path(tmpdir) / "state")
+            job_st = HarnessJob(
+                job_id=f"smoke-store-{uuid.uuid4().hex[:8]}",
+                tasks=[HarnessTask(task_id="s1", role_type=RoleType.research, payload={"query": "state test"})],
+            )
+            store.create_job_record(job_st)
+            result_st = Supervisor(state_store=store).process(job_st)
+            store.write_final_result(result_st)
+            record = store.read_job_record(job_st.job_id)
+            check(results, "StateStore job created",      record["job_id"] == job_st.job_id)
+            check(results, "StateStore status completed", record["status"] == JobStatus.completed.value)
+            check(results, "StateStore finalised_at set", record["finalised_at"] is not None)
+            check(results, "StateStore result not None",  record["result"] is not None)
+
+        # Section 3: Metadata tool
+        run_section("Metadata tool — allowed path")
+        permissive_cfg = SafetyConfig(
+            deterministic_only=False,
+            allow_real_tool_calls=True,
+            allowed_tool_categories=[ToolCategory.research],
+            require_audit_log=False,
         )
-        store_m.create_job_record(job_m)
-        result_m = Supervisor(safety_config=permissive_cfg, state_store=store_m).process(job_m)
-        check(results, "metadata task completes (permissive)", result_m.status == JobStatus.completed)
-        if result_m.task_outputs:
-            meta = result_m.task_outputs[0].result
-            check(results, "exists=True returned",       meta.get("exists") is True)
-            check(results, "size_bytes present",         "size_bytes" in meta)
-            check(results, "no content/preview in result",
-                  not any(k in meta for k in ("content", "preview", "snippet", "text")))
+        probe_path = "harness/__init__.py"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store_m = StateStore(state_dir=Path(tmpdir) / "state")
+            job_m = HarnessJob(
+                job_id=f"smoke-meta-{uuid.uuid4().hex[:8]}",
+                tasks=[HarnessTask(
+                    task_id="meta1",
+                    role_type=RoleType.research,
+                    payload={"tool": "inspect_file_metadata", "path": probe_path},
+                )],
+            )
+            store_m.create_job_record(job_m)
+            result_m = Supervisor(safety_config=permissive_cfg, state_store=store_m).process(job_m)
+            check(results, "metadata task completes (permissive)", result_m.status == JobStatus.completed)
+            if result_m.task_outputs:
+                meta = result_m.task_outputs[0].result
+                check(results, "exists=True returned",       meta.get("exists") is True)
+                check(results, "size_bytes present",         "size_bytes" in meta)
+                check(results, "no content/preview in result",
+                      not any(k in meta for k in ("content", "preview", "snippet", "text")))
+            else:
+                check(results, "metadata task output present", False, str(result_m.errors))
+            events = store_m.read_job_audit_events(job_m.job_id)
+            actions = {e["action"] for e in events}
+            check(results, "audit: attempted event written",  "tool_access_attempted"     in actions)
+            check(results, "audit: allowed event written",    "tool_access_allowed"        in actions)
+            check(results, "audit: succeeded event written",  "tool_execution_succeeded"   in actions)
+
+        # Section 4: Blocked default
+        run_section("Metadata tool — default config blocks")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store_b = StateStore(state_dir=Path(tmpdir) / "state")
+            job_b = HarnessJob(
+                job_id=f"smoke-block-{uuid.uuid4().hex[:8]}",
+                tasks=[HarnessTask(
+                    task_id="block1",
+                    role_type=RoleType.research,
+                    payload={"tool": "inspect_file_metadata", "path": "harness/__init__.py"},
+                )],
+            )
+            store_b.create_job_record(job_b)
+            result_b = Supervisor(state_store=store_b).process(job_b)
+            check(results, "default config blocks metadata tool",
+                  result_b.status == JobStatus.failed_execution)
+            check(results, "error mentions deterministic_only",
+                  any("deterministic_only" in e.message for e in result_b.errors))
+            events_b = {e["action"] for e in store_b.read_job_audit_events(job_b.job_id)}
+            check(results, "audit: denied event written", "tool_access_denied" in events_b)
+
+        # Section 5: Path safety
+        run_section("Path safety checks")
+        check(results, "path traversal rejected", call_metadata("../../etc/passwd")["status"] == "denied")
+        check(results, "absolute escape rejected", call_metadata("/etc/passwd")["status"] == "denied")
+        check(results, ".env rejected",      call_metadata(".env")["status"] == "denied")
+        check(results, ".pem rejected",      call_metadata("cert.pem")["status"] == "denied")
+        check(results, "directory rejected", call_metadata("harness")["status"] == "denied")
+
+        # Section 8: Drift diagnostic
+        run_section("Drift diagnostic")
+        proc = subprocess.run(
+            ["/home/jfroh/hermes/harness_venv/bin/python", "/home/jfroh/hermes/harness/orchestrator_v2.py"],
+            capture_output=True, text=True, timeout=15,
+        )
+        check(results, "orchestrator_v2 exits 0", proc.returncode == 0)
+
+        # Summary
+        passed = sum(1 for _, ok, _ in results if ok)
+        failed = sum(1 for _, ok, _ in results if not ok)
+        print(f"\nSmoke test: {passed} passed, {failed} failed")
+        
+        if failed == 0:
+            writer.append(HarnessEvent(event_type=EventType.VERIFICATION_PASSED, phase="smoke_test", status="passed", severity=EventSeverity.INFO))
+            return 0
         else:
-            check(results, "metadata task output present", False, str(result_m.errors))
-        events = store_m.read_job_audit_events(job_m.job_id)
-        actions = {e["action"] for e in events}
-        check(results, "audit: attempted event written",  "tool_access_attempted"     in actions)
-        check(results, "audit: allowed event written",    "tool_access_allowed"        in actions)
-        check(results, "audit: succeeded event written",  "tool_execution_succeeded"   in actions)
-
-    # Section 4: Blocked default
-    run_section("Metadata tool — default config blocks")
-    with tempfile.TemporaryDirectory() as tmpdir:
-        store_b = StateStore(state_dir=Path(tmpdir) / "state")
-        job_b = HarnessJob(
-            job_id=f"smoke-block-{uuid.uuid4().hex[:8]}",
-            tasks=[HarnessTask(
-                task_id="block1",
-                role_type=RoleType.research,
-                payload={"tool": "inspect_file_metadata", "path": "harness/__init__.py"},
-            )],
-        )
-        store_b.create_job_record(job_b)
-        result_b = Supervisor(state_store=store_b).process(job_b)
-        check(results, "default config blocks metadata tool",
-              result_b.status == JobStatus.failed_execution)
-        check(results, "error mentions deterministic_only",
-              any("deterministic_only" in e.message for e in result_b.errors))
-        events_b = {e["action"] for e in store_b.read_job_audit_events(job_b.job_id)}
-        check(results, "audit: denied event written", "tool_access_denied" in events_b)
-
-    # Section 5: Path safety
-    run_section("Path safety checks")
-    check(results, "path traversal rejected", call_metadata("../../etc/passwd")["status"] == "denied")
-    check(results, "absolute escape rejected", call_metadata("/etc/passwd")["status"] == "denied")
-    check(results, ".env rejected",      call_metadata(".env")["status"] == "denied")
-    check(results, ".pem rejected",      call_metadata("cert.pem")["status"] == "denied")
-    check(results, "directory rejected", call_metadata("harness")["status"] == "denied")
-
-    # Section 8: Drift diagnostic
-    run_section("Drift diagnostic")
-    proc = subprocess.run(
-        ["/home/jfroh/hermes/harness_venv/bin/python", "/home/jfroh/hermes/harness/orchestrator_v2.py"],
-        capture_output=True, text=True, timeout=15,
-    )
-    check(results, "orchestrator_v2 exits 0", proc.returncode == 0)
-
-    # Summary
-    passed = sum(1 for _, ok, _ in results if ok)
-    failed = sum(1 for _, ok, _ in results if not ok)
-    print(f"\nSmoke test: {passed} passed, {failed} failed")
-    return 1 if failed else 0
+            writer.append(HarnessEvent(event_type=EventType.VERIFICATION_FAILED, phase="smoke_test", status="failed", severity=EventSeverity.ERROR))
+            return 1
+            
+    except Exception as e:
+        writer.append(HarnessEvent(event_type=EventType.PHASE_BLOCKED, phase="smoke_test", status="error", severity=EventSeverity.CRITICAL, metadata={"error": str(e)}))
+        raise
 
 if __name__ == "__main__":
     sys.exit(run_smoke())

@@ -58,3 +58,19 @@ class EventWriter:
     def append(self, event: HarnessEvent):
         with open(self.log_path, "a", encoding="utf-8") as f:
             f.write(event.model_dump_json() + "\n")
+
+# Convenience function to create and write an event
+def emit_event(event_type: EventType, phase: str, status: str, severity: EventSeverity = EventSeverity.INFO, **kwargs):
+    """
+    Create a HarnessEvent and append it to the log.
+    Additional keyword arguments are passed as metadata.
+    """
+    event = HarnessEvent(
+        event_type=event_type,
+        phase=phase,
+        status=status,
+        severity=severity,
+        **kwargs
+    )
+    writer = EventWriter()
+    writer.append(event)
