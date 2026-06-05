@@ -1,0 +1,13 @@
+{
+  "decision": "approved",
+  "phase": "baseline-pilot",
+  "maturity_classification": "v1-foundation",
+  "blocking_issues": [],
+  "accepted_items": [
+    "guardrail-v1",
+    "dry-run-adjudication"
+  ],
+  "required_next_action": "awaiting manual trigger",
+  "next_instruction_for_hermes": "Proceed to next phase when ready",
+  "should_continue": false
+}
