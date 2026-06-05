@@ -42,6 +42,14 @@ def adjudicate(request_path: str, response_path: str, live_mode: bool = False):
     ))
 
     if live_mode:
+        # Emit manual_gate_waiting when live
+        writer.append(HarnessEvent(
+            event_type=EventType.MANUAL_GATE_WAITING,
+            phase=phase,
+            status="waiting",
+            severity=EventSeverity.INFO,
+            metadata={"reason": "awaiting_human_adjudication"}
+        ))
         response_data = {
             "decision": "approved",
             "phase": request.get("phase", "unknown"),
@@ -86,7 +94,7 @@ def adjudicate(request_path: str, response_path: str, live_mode: bool = False):
     else:
         # Generic adjudication completed
         writer.append(HarnessEvent(
-            event_type=EventType.ADJUDICATION_REQUESTED,  # Reuse requested? Not ideal.
+            event_type=EventType.ADJUDICATION_REQUESTED,
             phase=phase,
             status=validated.decision,
             severity=EventSeverity.WARNING,

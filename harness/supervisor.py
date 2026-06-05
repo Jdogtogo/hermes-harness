@@ -29,6 +29,8 @@ _ROLE_CATEGORY_MAP: dict[RoleType, set[ToolCategory]] = {
 }
 
 
+from harness.event_stream import EventWriter, HarnessEvent, EventType, EventSeverity
+
 class Supervisor:
     def __init__(
         self,
@@ -37,9 +39,26 @@ class Supervisor:
     ) -> None:
         self.safety_config = safety_config if safety_config is not None else SafetyConfig()
         self.state_store = state_store
+        self.writer = EventWriter()
 
     def _new_event_id(self, job_id: str, task_id: str) -> str:
         return f"evt-{job_id}-{task_id}-{uuid.uuid4().hex[:8]}"
+
+    def _emit_failure(self, job_id: str, reason: str, metadata: dict | None = None) -> None:
+        self.writer.append(HarnessEvent(
+            event_type=EventType.PHASE_BLOCKED,
+            phase=job_id,
+            status="failed",
+            severity=EventSeverity.CRITICAL,
+            metadata=metadata or {"reason": reason}
+        ))
+        self.writer.append(HarnessEvent(
+            event_type=EventType.VERIFICATION_FAILED,
+            phase=job_id,
+            status="failed",
+            severity=EventSeverity.ERROR,
+            metadata=metadata or {"reason": reason}
+        ))
 
     def _write_audit(
         self,
@@ -71,7 +90,21 @@ class Supervisor:
         errors: list[HarnessError] = []
         outputs: list[AgentOutput] = []
 
+        self.writer.append(HarnessEvent(
+            event_type=EventType.PHASE_STARTED,
+            phase=job.job_id,
+            status="started",
+            severity=EventSeverity.INFO,
+        ))
+
         if len(job.tasks) > self.safety_config.max_steps:
+            self.writer.append(HarnessEvent(
+                event_type=EventType.PHASE_BLOCKED,
+                phase=job.job_id,
+                status="failed",
+                severity=EventSeverity.CRITICAL,
+                metadata={"reason": "max_steps_exceeded"}
+            ))
             errors.append(HarnessError(
                 job_id=job.job_id,
                 error_type="max_steps_exceeded",
@@ -79,6 +112,13 @@ class Supervisor:
                     f"Job has {len(job.tasks)} tasks, which exceeds "
                     f"SafetyConfig.max_steps={self.safety_config.max_steps}"
                 ),
+            ))
+            self.writer.append(HarnessEvent(
+                event_type=EventType.VERIFICATION_FAILED,
+                phase=job.job_id,
+                status="failed",
+                severity=EventSeverity.ERROR,
+                metadata={"reason": "max_steps_exceeded"}
             ))
             return HarnessResult(
                 job_id=job.job_id,
@@ -89,16 +129,37 @@ class Supervisor:
         try:
             HarnessJob.model_validate(job.model_dump())
         except ValidationError as exc:
+            self.writer.append(HarnessEvent(
+                event_type=EventType.PHASE_BLOCKED,
+                phase=job.job_id,
+                status="failed",
+                severity=EventSeverity.CRITICAL,
+                metadata={"reason": "job_validation_error"}
+            ))
             errors.append(HarnessError(
                 job_id=job.job_id,
                 error_type="job_validation_error",
                 message=str(exc),
+            ))
+            self.writer.append(HarnessEvent(
+                event_type=EventType.VERIFICATION_FAILED,
+                phase=job.job_id,
+                status="failed",
+                severity=EventSeverity.ERROR,
+                metadata={"reason": "job_validation_error"}
             ))
             return HarnessResult(
                 job_id=job.job_id,
                 status=JobStatus.failed_validation,
                 errors=errors,
             )
+
+        self.writer.append(HarnessEvent(
+            event_type=EventType.VERIFICATION_STARTED,
+            phase=job.job_id,
+            status="started",
+            severity=EventSeverity.INFO,
+        ))
 
         for task in job.tasks:
             if "safety_config" in task.payload:
@@ -270,6 +331,19 @@ class Supervisor:
                     errors=errors,
                 )
             outputs.append(output)
+
+        self.writer.append(HarnessEvent(
+            event_type=EventType.VERIFICATION_PASSED,
+            phase=job.job_id,
+            status="passed",
+            severity=EventSeverity.INFO,
+        ))
+        self.writer.append(HarnessEvent(
+            event_type=EventType.PHASE_COMPLETED,
+            phase=job.job_id,
+            status="completed",
+            severity=EventSeverity.INFO,
+        ))
 
         return HarnessResult(
             job_id=job.job_id,

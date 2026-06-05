@@ -1,6 +1,3 @@
 {
-  "phase": "guardrail-baseline",
-  "report_path": "/home/jfroh/hermes/harness/HERMES_GUARDRAIL_BASELINE_RESTORE_REPORT.md",
-  "commit": "c602627",
-  "verification_summary": "Clean guardrail baseline restored. 44/44 tests passed."
+  "phase": "test"
 }
