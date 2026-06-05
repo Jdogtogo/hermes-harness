@@ -9,3 +9,5 @@ harness_venv/
 venv/
 .git/
 legacy_flat_layout/
+events/*.jsonl
+events/*.jsonl
