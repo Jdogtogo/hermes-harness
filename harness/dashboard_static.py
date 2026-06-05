@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 from collections import Counter
 from datetime import datetime
+import subprocess
+
 
 class DashboardGenerator:
     def __init__(self, event_file: Path):
@@ -50,7 +52,8 @@ class DashboardGenerator:
             "latest_phase": latest_event.get("phase"),
             "latest_adjudication": latest_event.get("adjudication_decision"),
             "human_required": any(e.get("human_required", False) for e in events),
-            "last_10_summaries": safe_summaries
+            "last_10_summaries": safe_summaries,
+            "generated_at": datetime.utcnow().isoformat() + "Z"
         }
         return summary
 
@@ -65,6 +68,7 @@ class DashboardGenerator:
         html_content.append("<head>")
         html_content.append("    <meta charset='UTF-8'>")
         html_content.append("    <meta name='viewport' content='width=device-width, initial-scale=1.0'>")
+        html_content.append("    <meta http-equiv='refresh' content='300'>")
         html_content.append("    <title>Hermes Harness Dashboard</title>")
         html_content.append("    <style>")
         html_content.append("        body { font-family: Arial, sans-serif; margin: 20px; }")
@@ -79,10 +83,18 @@ class DashboardGenerator:
         html_content.append("        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }")
         html_content.append("        th { background-color: #f2f2f2; }")
         html_content.append("        tr:nth-child(even) { background-color: #f9f9f9; }")
+        html_content.append("        .readonly { background: #d4edda; color: #155724; padding: 10px; border-radius: 5px; margin-bottom: 20px; }")
         html_content.append("    </style>")
         html_content.append("</head>")
         html_content.append("<body>")
-        html_content.append("    <h1>Hermes Harndashboard</h1>")
+        html_content.append("    <h1>Hermes Harness Dashboard</h1>")
+
+        # Read-only banner
+        html_content.append("    <div class='readonly'>")
+        html_content.append("        <strong>READ-ONLY DASHBOARD</strong> - This dashboard is for visibility only. No actions can be performed.")
+        html_content.append("        <br>")
+        html_content.append(f"        Generated at: {html.escape(summary.get('generated_at', 'N/A'))}")
+        html_content.append("    </div>")
 
         # Current Harness Status
         html_content.append("    <div class='section'>")
@@ -138,7 +150,6 @@ class DashboardGenerator:
 
         # Git commit (optional)
         try:
-            import subprocess
             result = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True, cwd=self.event_file.parent.parent)
             git_commit = result.stdout.strip() if result.returncode == 0 else "unknown"
         except Exception:
@@ -156,6 +167,7 @@ class DashboardGenerator:
 
         return "\n".join(html_content)
 
+
 def main():
     event_file = Path("events/harness_events.jsonl")
     generator = DashboardGenerator(event_file)
@@ -170,6 +182,7 @@ def main():
         f.write(html_output)
 
     print(f"Dashboard generated at {output_file}")
+
 
 if __name__ == "__main__":
     main()

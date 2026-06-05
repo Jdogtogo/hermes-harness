@@ -45,7 +45,7 @@ def test_dashboard_generation():
 
         # Check that the HTML output contains expected sections
         assert "<!DOCTYPE html>" in html_output
-        assert "<h1>Hermes Harndashboard</h1>" in html_output
+        assert "<h1>Hermes Harness Dashboard</h1>" in html_output
         assert "Current Harness Status" in html_output
         assert "Event Counts by Type" in html_output
         assert "Severity Counts" in html_output
@@ -61,10 +61,6 @@ def test_dashboard_generation():
         assert "2026-06-05T10:00:00Z" in html_output
         assert "2026-06-05T10:05:00Z" in html_output
 
-        # Check that unsafe values are escaped (if we had HTML in the data, it would be escaped)
-        # We'll test by injecting a string with HTML and ensuring it's escaped.
-        # But note: the current implementation does not put the summary in the HTML, so we skip.
-
     finally:
         os.unlink(temp_event_file)
 
@@ -79,11 +75,8 @@ def test_empty_event_stream():
         html_output = generator.generate_html(summary)
 
         # Check that the total events value is 0
-        # Look for the Total Events section and then the value 0
         assert 'Total Events' in html_output
-        # Find the value associated with Total Events
         import re
-        # Pattern to match the Total Events data-item and capture the value
         pattern = r"<div class='data-item'>\s*<div class='label'>Total Events</div>\s*<div class='value'>(\d+)</div>"
         match = re.search(pattern, html_output)
         assert match is not None
@@ -92,7 +85,7 @@ def test_empty_event_stream():
         os.unlink(temp_event_file)
 
 def test_malformed_event_lines():
-    """Test that malformed JSON lines are skipped (as in the consumer)."""
+    """Test that malformed JSON lines are skipped."""
     with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
         f.write('{"timestamp": "2026-06-05T10:00:00Z", "event_type": "test"}\n')
         f.write('not json\n')
@@ -102,7 +95,6 @@ def test_malformed_event_lines():
     try:
         generator = DashboardGenerator(Path(temp_event_file))
         summary = generator.get_dashboard_summary()
-        # Should have 2 events (the malformed line is skipped)
         assert summary['total_events'] == 2
         html_output = generator.generate_html(summary)
         assert "test" in html_output
@@ -133,7 +125,6 @@ def test_no_launch_buttons_or_forms():
         summary = generator.get_dashboard_summary()
         html_output = generator.generate_html(summary)
 
-        # Check for absence of common button/form indicators
         assert "<button" not in html_output.lower()
         assert "<form" not in html_output.lower()
         assert "type=\"submit\"" not in html_output.lower()
@@ -142,17 +133,13 @@ def test_no_launch_buttons_or_forms():
         os.unlink(temp_event_file)
 
 def test_module_entry_point():
-    """Test that the module can be run as a script (we'll just check that the main function exists)."""
-    # We'll test by importing and checking that the main function is defined
+    """Test module entry point."""
     from harness.dashboard_static import main
     assert callable(main)
 
-    # We won't actually run it because it would write to the dashboard directory.
-    # Instead, we'll test in a temporary directory.
     with tempfile.TemporaryDirectory() as tmpdir:
         event_file = Path(tmpdir) / "events" / "harness_events.jsonl"
         event_file.parent.mkdir(parents=True, exist_ok=True)
-        # Write a sample event
         with open(event_file, 'w') as f:
             f.write(json.dumps({
                 "timestamp": "2026-06-05T10:00:00Z",
@@ -164,16 +151,12 @@ def test_module_entry_point():
                 "summary": "Verification started"
             }) + '\n')
 
-        # Change to the temporary directory and run the module
         old_cwd = os.getcwd()
         try:
             os.chdir(tmpdir)
-            # We'll run the module by importing and calling main, but we need to adjust the event file path.
-            # Instead, we'll test the DashboardGenerator directly in the temporary directory.
             generator = DashboardGenerator(event_file)
             summary = generator.get_dashboard_summary()
             html_output = generator.generate_html(summary)
-            # Check that the event type is present in the last 10 summaries
             assert "verification_started" in html_output
         finally:
             os.chdir(old_cwd)
