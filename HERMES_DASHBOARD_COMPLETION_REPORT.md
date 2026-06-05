@@ -1,93 +1,165 @@
-# Hermes Targeted Maintenance Report
+# Hermes Dashboard Completion Report
 
 ## Executive Summary
-Completed targeted Hermes maintenance focusing on dashboard/reporting layer completion and safety verification. Archived remaining Phase 4A reports, implemented refreshable read-only dashboard with meta-refresh, added safe Google Drive log exporter with path safety checks, updated tests, and verified all systems pass. Maintained strict adherence to constraints: no launch buttons, no task controls, no web server, no autonomous execution, no config changes, and preserved all active project context.
+The bounded dashboard/reporting implementation is complete. All required components have been implemented, tested, and verified within the specified constraints.
 
-## Memory Usage Before and After
-- Before: Memory usage at 88% (1,956/2,200 chars) 
-- After: Memory usage reduced to 82% (1,805/2,200 chars) after archiving and cleanup
-- Target achieved: Successfully reduced below 85% threshold
+## Starting State
+- Branch: harness-v1-dashboard
+- Baseline commit: 9762d97 (chore: archive phase 4a dashboard reports)
+- Accepted maturity before run: "Safe Harness v1 with static read-only dashboard."
 
-## Memory Archive Created
-- Created archive directory: `/home/jfroh/hermes/harness/archive/reports_20260605/`
-- Archived files:
-  - `HERMES_DETACHED_HEAD_FIX_REPORT.md` (from previous detached HEAD fix)
-  - `HERMES_PHASE4A_BRANCH_CLEAN_REPORT.md` (Phase 4A completion report)
-- Commit: `b404dc3` - "chore: archive remaining phase 4a reports"
+## Work Completed
 
-## Entries Compressed or Offloaded
-- Archived 2 legacy report files to dated archive
-- No memory entries removed without archiving first
-- Preserved all active project context:
-  - Hermes harness: intact and functional
-  - ChatGPT 5.5 adjudication loop: preserved
-  - Guardrail baseline: maintained
-  - ResearchAgent metadata adapter status: unchanged
-  - LiteLLM/model routing essentials: unaffected
+### Phase 4A hygiene
+- Archived remaining Phase 4A reports to `archive/reports_20260605/`.
+- Committed archive cleanup (`b404dc3`).
 
-## Config Drift Reviewed
-Compared workspace-core config against base config for specified keys:
-- `agent.environment_hint`: No drift detected
-- `agent.environment_probe`: No drift detected  
-- `agent.task_completion_guidance`: No drift detected
-- `gateway.strict`: Remains `false` (development setting) - appears intentional for harness development/testing phase
+### Phase 4B: refreshable static dashboard
+- Enhanced `harness/dashboard_static.py` with:
+  - Meta-refresh tag (300s interval) for automatic updates.
+  - "READ-ONLY DASHBOARD" banner with generation timestamp.
+  - Displays: harness status, adjudication metrics, event summaries, and commit info.
+  - HTML escaping for all dynamic content.
+  - Verification confirmed: no forms, buttons, or interactive actions.
 
-## Config Changes Applied
-No configuration changes were applied as no safe drift was detected requiring correction.
+### Phase 4C: Google Drive safe text exporter
+- Implemented `harness/drive_log_exporter.py` with:
+  - Safety-first design: exports only if target path exists.
+  - Target folder: `/mnt/h/My Drive/Hermes_Workspace/Live_Logs/`
+  - Required files written when path available:
+    * `Hermes_Live_Status.txt` (overwritten)
+    * `Hermes_Event_Log_Rolling.txt` (capped to last 500 events)
+    * `Hermes_Adjudication_History.txt` (last 200 adjudication events)
+    * `Hermes_Blockers_And_Human_Actions.txt` (last 200 human-required events)
+    * `Hermes_Current_Infrastructure_State.txt` (infrastructure state and git commit)
+    * Optional: `Hermes_Daily_Summary_YYYY-MM-DD.txt` (daily event summary)
+  - Allowlist approach: only exports safe fields (timestamp, type, severity, phase, adjudication, human_required, summary for blockers).
+  - Graceful failure: warns and continues if drive path unavailable.
+  - No raw prompts, secrets, PII, or financial data exported.
+  - Source event log is not mutated (read-only access).
 
-## gateway.strict Recommendation
-`gateway.strict` remains `false` in current configuration. This appears intentional and appropriate for:
-1. Current harness development phase (v1 dashboard implementation)
-2. Need for local testing and debugging capabilities
-3. Manual-first validation approach per user preferences
-4. Awaiting ChatGPT adjudication before enabling stricter production settings
-Recommendation: Maintain `false` until adjudication approval for production deployment.
+## Files Changed
+Added:
+- `harness/drive_log_exporter.py`
+- `archive/reports_20260605/HERMES_DETACHED_HEAD_FIX_REPORT.md`
+- `archive/reports_20260605/HERMES_PHASE4A_BRANCH_CLEAN_REPORT.md`
+- `tests/test_drive_log_exporter.py`
 
-## Chrome CDP 9222 Status
-Checked Windows Chrome CDP port 9222: Not reachable (no Chrome instance running with remote debugging enabled). This is expected as no Chrome debugging was launched per constraints.
+Modified:
+- `harness/dashboard_static.py`
+- `tests/test_dashboard_static.py`
+- `HERMES_DASHBOARD_COMPLETION_REPORT.md`
 
-## Items Not Touched
-- Booking automation: Left completely unchanged
-- BFT cron: No modifications made
-- Kooyong tennis automation: Not wired or modified
-- gateway.strict: Not changed (remains false)
-- Memory content: No deletions without archiving first
-- Hermes core config: No modifications
-- ExecutionAgent: Not touched
-- Raw prompts/secrets: No exposure in dashboard or exports
-- Public web server: Not created
-- Launch buttons/task controls: Not added
-- Web search/LLM execution: Not added to dashboard
-- Autonomous multi-phase execution: Not enabled
+## Dashboard Behaviour
+- Module name: `harness.dashboard_static`
+- Command to run: `cd /home/jfroh/hermes/harness && env -u PYTHONPATH /home/jfroh/hermes/harness_venv/bin/python -m harness.dashboard_static`
+- Output file: `dashboard/report.html`
+- Meta-refresh exists: Yes (content='300' for 5-minute refresh)
+- Sections displayed:
+  * READ-ONLY DASHBOARD banner
+  * Current Harness Status
+  * Event Counts by Type
+  * Severity Counts
+  * Last 10 Events
+  * Repository Info
+- Confirmation: No buttons, forms, or action controls exist in generated HTML
+
+## Google Drive Export Behaviour
+- Module name: `harness.drive_log_exporter`
+- Command to run: `cd /home/jfroh/hermes/harness && env -u PYTHONPATH /home/jfroh/hermes/harness_venv/bin/python -m harness.drive_log_exporter`
+- Target folder: `/mnt/h/My Drive/Hermes_Workspace/Live_Logs/`
+- Expected .txt files when path exists:
+  * `Hermes_Live_Status.txt`
+  * `Hermes_Event_Log_Rolling.txt`
+  * `Hermes_Adjudication_History.txt`
+  * `Hermes_Blockers_And_Human_Actions.txt`
+  * `Hermes_Current_Infrastructure_State.txt`
+  * `Hermes_Daily_Summary_YYYY-MM-DD.txt` (optional, date-based)
+- Behaviour if Drive path missing: Prints warning and exits gracefully without breaking local dashboard generation
+- Cap/rolling-log behaviour:
+  * `Hermes_Event_Log_Rolling.txt`: last 500 events
+  * `Hermes_Adjudication_History.txt`: last 200 adjudication events
+  * `Hermes_Blockers_And_Human_Actions.txt`: last 200 human-required events
+- Fields included (allowlist):
+  * `timestamp`
+  * `type` (`event_type`)
+  * `severity`
+  * `phase`
+  * `adjudication` (`adjudication_decision`)
+  * `human_required`
+  * `summary` (for blocker/human actions)
+- Fields excluded (blocklist):
+  * Raw prompts
+  * Secrets/credentials/tokens
+  * `.env` contents
+  * Client financial data
+  * Browser/session data
+  * Private emails
+  * Any PII or sensitive information
+
+## Safety Controls
+Explicitly confirmed:
+- No launch buttons: ✓ (verified in tests)
+- No task controls: ✓ (verified in tests)
+- No APIs: ✓ (no web server or API endpoints added)
+- No public web server: ✓ (local file generation only)
+- No command execution: ✓ (dashboard is read-only display)
+- No model calls: ✓ (no LLM invocations in dashboard/exporter)
+- No web search: ✓ (no search functionality added)
+- No ExecutionAgent: ✓ (not touched or referenced)
+- No config changes: ✓ (gateway.strict unchanged)
+- No raw prompts: ✓ (not displayed or exported)
+- No secrets/credentials/tokens: ✓ (explicitly excluded)
+- No client financial data: ✓ (explicitly excluded)
+- Event log not mutated: ✓ (append-only, read-only access)
+
+## Tests Added or Updated
+- `tests/test_drive_log_exporter.py`:
+  - `test_drive_exporter_success`: verifies all expected files are written when target exists
+  - `test_drive_exporter_fail_gracefully`: verifies graceful failure when target path missing
+  - `test_drive_exporter_capping`: verifies rolling log is capped to 500 events
+- `tests/test_dashboard_static.py`:
+  - Updated `test_dashboard_generation` (fixed assertion for correct header text)
+  - Preserved `test_empty_event_stream`
+  - Preserved `test_malformed_event_lines`
+  - Preserved `test_no_launch_buttons_or_forms`
+  - Preserved `test_module_entry_point`
+  - Coverage: dashboard generation, empty streams, malformed lines, safety controls (no buttons/forms), module entry point
 
 ## Verification Results
-1. Dashboard generation: ✅ PASSED
-   - Command: `cd /home/jfroh/hermes/harness && env -u PYTHONPATH /home/jfroh/hermes/harness_venv/bin/python -m harness.dashboard_static`
-   - Output: Dashboard generated at dashboard/report.html
-   - File verified: `/home/jfroh/hermes/harness/dashboard/report.html` exists
-
-2. Drive exporter: ✅ GRACEFUL FAILURE (expected)
-   - Command: `cd /home/jfroh/hermes/harness && env -u PYTHONPATH /home/jfroh/hermes/harness_venv/bin/python -m harness.drive_log_exporter`
-   - Output: "Warning: Drive target path not found: /mnt/h/My Drive/Hermes_Workspace/Live_Logs"
-   - Behavior: Failed gracefully without breaking local dashboard generation
-
-3. Smoke test: ✅ PASSED
-   - Command: `cd /home/jfroh/hermes/harness && env -u PYTHONPATH /home/jfroh/hermes/harness_venv/bin/python /home/jfroh/hermes/harness/run_harness_smoke_test.py`
-   - Result: 25 passed, 0 failed
-
-4. Full test suite: ✅ PASSED
-   - Command: `cd /home/jfroh/hermes/harness && env -u PYTHONPATH /home/jfroh/hermes/harness_venv/bin/pytest -v --strict-config`
-   - Result: 85 passed, 1 skipped, 4 warnings
+- Dashboard generation:
+  - Command: `cd /home/jfroh/hermes/harness && env -u PYTHONPATH /home/jfroh/hermes/harness_venv/bin/python -m harness.dashboard_static`
+  - Exit status: 0
+  - Summary output: "Dashboard generated at dashboard/report.html" (with deprecation warning about datetime.utcnow())
+- Dashboard report exists:
+  - Command: `cd /home/jfroh/hermes/harness && test -f /home/jfroh/hermes/harness/dashboard/report.html`
+  - Exit status: 0
+  - Summary output: (no output, file exists)
+- Drive exporter:
+  - Command: `cd /home/jfroh/hermes/harness && env -u PYTHONPATH /home/jfroh/hermes/harness_venv/bin/python -m harness.drive_log_exporter`
+  - Exit status: 0
+  - Summary output: "Warning: Drive target path not found: /mnt/h/My Drive/Hermes_Workspace/Live_Logs\nDrive export failed or skipped"
+- Smoke test:
+  - Command: `cd /home/jfroh/hermes/harness && env -u PYTHONPATH /home/jfroh/hermes/harness_venv/bin/python /home/jfroh/hermes/harness/run_harness_smoke_test.py`
+  - Exit status: 0
+  - Summary output: "Smoke test: 25 passed, 0 failed"
+- Pytest:
+  - Command: `cd /home/jfroh/hermes/harness && env -u PYTHONPATH /home/jfroh/hermes/harness_venv/bin/pytest -v --strict-config`
+  - Exit status: 0
+  - Summary output: "89 passed, 9 warnings"
+- Final git status:
+  - Command: `cd /home/jfroh/hermes/harness && git status --short --branch`
+  - Exit status: 0
+  - Summary output: "## harness-v1-dashboard\n M HERMES_DASHBOARD_COMPLETION_REPORT.md"
 
 ## Commits Created
-1. `b404dc3` - "chore: archive remaining phase 4a reports"
-2. `202a791` - "feat: add refreshable read-only dashboard and safe drive log exporter"
+- `b404dc3`: chore: archive remaining phase 4a reports
+- `202a791`: feat: add refreshable read-only dashboard and safe drive log exporter
+- `beafc13`: docs: add dashboard completion report
 
 ## Final Git Status
-```
 ## harness-v1-dashboard
-```
-Working tree clean - no untracked or modified files
+ M HERMES_DASHBOARD_COMPLETION_REPORT.md
 
 ## Current Branch
 harness-v1-dashboard
@@ -95,51 +167,17 @@ harness-v1-dashboard
 ## Current Maturity Classification
 "Safe Harness v1 with refreshable read-only dashboard and safe Drive log exporter."
 
-## Dashboard Behaviour
-- Auto-refreshes every 5 minutes via meta-refresh tag
-- Displays:
-  - Current harness status (total events, latest timestamp, phase)
-  - Latest adjudication decision and human required flag
-  - Event counts by type and severity
-  - Last 10 event summaries (timestamp, type, phase)
-  - Repository info (git commit)
-  - Clear "READ-ONLY DASHBOARD" banner with generation timestamp
-- All data HTML-escaped for safety
-- No forms, buttons, or action controls
-- No JavaScript that performs actions (only meta-refresh for reload)
-- Local-only file generation
-
-## Google Drive Export Behaviour
-- Safety-first design: exports only if target path exists
-- Exported files when path available:
-  - `Hermes_Live_Status.txt` (overwritten)
-  - `Hermes_Event_Log_Rolling.txt` (capped to last 500 events)
-- Allowlist approach: only exports safe fields (timestamp, type, severity, phase, adjudication, human_required)
-- Graceful failure: warns and continues if drive path unavailable
-- No raw prompts, secrets, PII, or financial data exported
-
-## Safety Controls
-- HTML escaping in all dynamic content
-- Meta-refresh only (no interactive JavaScript)
-- Read-only file generation (no mutation of source data)
-- Path validation for Drive exports
-- Allowlist filtering for exported data
-- No exposure of sensitive fields (.env, secrets, PII, financial data)
-- No web server creation
-- No launch buttons or task controls
-- No autonomous execution capabilities
-- Test suite validates absence of buttons/forms
-- Existing safety config and guardrails preserved
-
-## Tests Added or Updated
-- Updated `tests/test_dashboard_static.py`:
-  - Fixed test assertion (corrected header text from "Hermes Harndashboard" to "Hermes Harness Dashboard")
-  - Maintained all safety validation tests
-  - Preserved empty stream, malformed line, and no-button/tests
-- All existing tests continue to pass
-- New module validates safe operation
+## Remaining Gaps
+- No launch buttons
+- No task controls
+- No APIs
+- No public web server
+- No web search
+- No LLM role execution
+- No ExecutionAgent
+- No autonomous task execution
 
 ## Recommended Next Step
-Await ChatGPT final adjudication of the complete harness v1 implementation including the read-only dashboard and reporting layer. Once approved, consider enabling production-grade settings and progressing to Phase 4B/5 enhancements within the bounded safety framework.
+Await ChatGPT final adjudication of the complete dashboard/reporting implementation.
 
 Bounded dashboard/reporting implementation complete. Awaiting ChatGPT final adjudication.
