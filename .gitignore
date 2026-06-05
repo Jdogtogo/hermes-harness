@@ -11,3 +11,4 @@ venv/
 legacy_flat_layout/
 events/*.jsonl
 events/*.jsonl
+dashboard/*.html
