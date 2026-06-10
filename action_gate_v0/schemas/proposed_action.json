@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "action_type": {"type": "string", "enum": [
+      "read_file", "write_file", "patch_file", "delete_file", "shell", "python",
+      "web_read", "download", "external_message", "api_write", "credential_access",
+      "financial_action", "cron_job", "spawn_agent", "git_commit", "git_push",
+      "memory_write", "report_write", "adjudicator_manifest_update"
+    ]},
+    "paths": {"type": "array", "items": {"type": "string"}},
+    "command": {"type": ["string", "null"]},
+    "target": {"type": ["string", "null"]},
+    "bytes_expected": {"type": ["number", "null"]},
+    "reason": {"type": "string"}
+  },
+  "required": ["action_type", "reason"]
+}

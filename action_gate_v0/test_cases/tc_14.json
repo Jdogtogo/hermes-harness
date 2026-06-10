@@ -1,0 +1,43 @@
+{
+  "case_id": "tc_14",
+  "description": "Symlink to protected root",
+  "manifest": {
+    "task_id": "t_test",
+    "risk_class": "Green",
+    "allowed_write_paths": [
+      "/home/jfroh/hermes/harness/"
+    ],
+    "denied_write_roots": [
+      "/home/jfroh/.hermes/hermes-agent/"
+    ],
+    "allowed_command_patterns": [],
+    "denied_command_patterns": [
+      "rm"
+    ],
+    "external_write_allowed": false,
+    "credential_access_allowed": false,
+    "financial_action_allowed": false,
+    "cron_allowed": false,
+    "spawn_agent_allowed": false,
+    "large_download_limit_mb": 10,
+    "mode": "act",
+    "allowed_read_roots": [],
+    "denied_read_roots": [],
+    "manifest_locked": false,
+    "manifest_phase": "act"
+  },
+  "proposed_action": {
+    "action_type": "write_file",
+    "paths": [
+      "/home/jfroh/hermes/harness/link_to_protected.txt"
+    ],
+    "reason": "test"
+  },
+  "loop_state": {
+    "implementation_attempts": 0,
+    "verification_fix_cycles": 0,
+    "report_corrections": 0,
+    "risk_increased": false
+  },
+  "expected_decision": "deny"
+}
