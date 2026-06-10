@@ -1,0 +1,118 @@
+[
+  {
+    "title": "How engineers at Nextdoor use Codex to build without limits",
+    "link": "https://openai.com/index/nextdoor",
+    "published": "Tue, 09 Jun 2026 12:00:00 GMT",
+    "source": "openai_rss"
+  },
+  {
+    "title": "What Codex unlocks for Notion",
+    "link": "https://openai.com/index/notion",
+    "published": "Tue, 09 Jun 2026 10:00:00 GMT",
+    "source": "openai_rss"
+  },
+  {
+    "title": "Industrial policy for the Intelligence Age",
+    "link": "https://openai.com/index/industrial-policy-for-the-intelligence-age",
+    "published": "Tue, 09 Jun 2026 00:00:00 GMT",
+    "source": "openai_rss"
+  },
+  {
+    "title": "Confidential submission of draft S-1 to the SEC",
+    "link": "https://openai.com/index/openai-submits-confidential-s-1",
+    "published": "Mon, 08 Jun 2026 14:00:00 GMT",
+    "source": "openai_rss"
+  },
+  {
+    "title": "Built to benefit everyone: our plan",
+    "link": "https://openai.com/index/built-to-benefit-everyone-our-plan",
+    "published": "Mon, 08 Jun 2026 01:30:00 GMT",
+    "source": "openai_rss"
+  },
+  {
+    "title": "Can Voice Agents Handle Bilingual Customers? Benchmarking Frontier ASR on Code-Switched Speech",
+    "link": "https://huggingface.co/blog/ServiceNow-AI/code-switching",
+    "published": "Tue, 09 Jun 2026 19:38:28 GMT",
+    "source": "huggingface_blog"
+  },
+  {
+    "title": "Introducing North Mini Code: Cohere\u2019s First Model For Developers",
+    "link": "https://huggingface.co/blog/CohereLabs/introducing-north-mini-code",
+    "published": "Tue, 09 Jun 2026 15:56:23 GMT",
+    "source": "huggingface_blog"
+  },
+  {
+    "title": "How an Agent Built a 3D Paris Gallery by Chaining Two Hugging Face Spaces",
+    "link": "https://huggingface.co/blog/mishig/spaces-agents-md",
+    "published": "Tue, 09 Jun 2026 10:46:19 GMT",
+    "source": "huggingface_blog"
+  },
+  {
+    "title": "Migrating Your GitHub CI to Hugging Face Jobs",
+    "link": "https://huggingface.co/blog/github-ci-hf-jobs",
+    "published": "Tue, 09 Jun 2026 00:00:00 GMT",
+    "source": "huggingface_blog"
+  },
+  {
+    "title": "The Open Source Community is backing OpenEnv for Agentic RL",
+    "link": "https://huggingface.co/blog/openenv-agentic-rl",
+    "published": "Mon, 08 Jun 2026 00:00:00 GMT",
+    "source": "huggingface_blog"
+  },
+  {
+    "repo": "BerriAI/litellm",
+    "tag_name": "v1.88.1",
+    "published_at": "2026-06-09T01:26:49Z",
+    "html_url": "https://github.com/BerriAI/litellm/releases/tag/v1.88.1",
+    "source": "github_releases"
+  },
+  {
+    "repo": "BerriAI/litellm",
+    "tag_name": "v1.84.6",
+    "published_at": "2026-06-09T01:55:10Z",
+    "html_url": "https://github.com/BerriAI/litellm/releases/tag/v1.84.6",
+    "source": "github_releases"
+  },
+  {
+    "repo": "ollama/ollama",
+    "tag_name": "v0.30.7",
+    "published_at": "2026-06-07T21:51:48Z",
+    "html_url": "https://github.com/ollama/ollama/releases/tag/v0.30.7",
+    "source": "github_releases"
+  },
+  {
+    "repo": "ollama/ollama",
+    "tag_name": "v0.30.6",
+    "published_at": "2026-06-05T20:00:18Z",
+    "html_url": "https://github.com/ollama/ollama/releases/tag/v0.30.6",
+    "source": "github_releases"
+  },
+  {
+    "repo": "stanfordnlp/dspy",
+    "tag_name": "3.3.0b1",
+    "published_at": "2026-05-28T01:11:39Z",
+    "html_url": "https://github.com/stanfordnlp/dspy/releases/tag/3.3.0b1",
+    "source": "github_releases"
+  },
+  {
+    "repo": "stanfordnlp/dspy",
+    "tag_name": "3.2.1",
+    "published_at": "2026-05-05T19:37:48Z",
+    "html_url": "https://github.com/stanfordnlp/dspy/releases/tag/3.2.1",
+    "source": "github_releases"
+  },
+  {
+    "repo": "ggml-org/llama.cpp",
+    "tag_name": "b9587",
+    "published_at": "2026-06-10T08:12:19Z",
+    "html_url": "https://github.com/ggml-org/llama.cpp/releases/tag/b9587",
+    "source": "github_releases"
+  },
+  {
+    "repo": "ggml-org/llama.cpp",
+    "tag_name": "b9585",
+    "published_at": "2026-06-09T18:15:21Z",
+    "html_url": "https://github.com/ggml-org/llama.cpp/releases/tag/b9585",
+    "source": "github_releases"
+  }
+]
