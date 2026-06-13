@@ -12,3 +12,24 @@ legacy_flat_layout/
 events/*.jsonl
 events/*.jsonl
 dashboard/*.html
+
+# Secrets / credentials
+.env
+.env.*
+*secret*
+*token*
+*credential*
+*password*
+client_secret_*
+*.pem
+*.key
+
+# Databases / state
+*.db
+*.sqlite
+*.sqlite3
+
+# Backups / generated checkpoints
+*.bak
+*.bak.*
+update_checkpoints/

@@ -1,12 +1,23 @@
 import json
+import shutil
 from pathlib import Path
 from datetime import datetime
 import os
 
-# Target folder
-DRIVE_TARGET = Path("/mnt/h/My Drive/Hermes_Workspace/Live_Logs/")
+# ── Path constants ──────────────────────────────────────────────────────────────
+# Local WSL workspace is canonical. Google Drive is optional archive/export only.
+LOCAL_TARGET   = Path.home() / ".hermes/workspace/live_logs"
+DRIVE_WORKSPACE = Path("/mnt/h/My Drive/Hermes_Workspace")
+DRIVE_TARGET   = DRIVE_WORKSPACE / "Live_Logs"
+
 
 class DriveLogExporter:
+    """Exports harness events to structured log files in a given output directory.
+
+    The class is output-directory-agnostic — callers supply output_dir.
+    Use main() for the standard local-first export with optional Drive sync.
+    """
+
     def __init__(self, event_file: Path, output_dir: Path):
         self.event_file = event_file
         self.output_dir = output_dir
@@ -37,7 +48,7 @@ class DriveLogExporter:
         self.export_blockers_and_actions(events)
         self.export_infrastructure_state(events)
         self.export_daily_summary(events)
-        
+
         return True
 
     def export_live_status(self, events):
@@ -74,13 +85,37 @@ class DriveLogExporter:
             f.write(f"Summary for {date_str}\n")
             f.write(f"Events today: {len([e for e in events if e.get('timestamp', '').startswith(date_str)])}\n")
 
+
+def _copy_to_drive(local_dir: Path) -> None:
+    """Copy local live_logs to Drive. Best-effort — never raises."""
+    if not DRIVE_WORKSPACE.is_dir():
+        print(f"Warning: Drive not available at {DRIVE_WORKSPACE} — skipping Drive export")
+        return
+    try:
+        DRIVE_TARGET.mkdir(parents=True, exist_ok=True)
+        for src in local_dir.iterdir():
+            if src.is_file():
+                shutil.copyfile(src, DRIVE_TARGET / src.name)
+        print(f"Drive export complete: {DRIVE_TARGET}")
+    except (OSError, shutil.Error) as e:
+        print(f"Warning: Drive export failed (non-fatal): {e}")
+
+
 def main():
     event_file = Path("events/harness_events.jsonl")
-    exporter = DriveLogExporter(event_file, DRIVE_TARGET)
+
+    # Ensure local target exists (idempotent)
+    LOCAL_TARGET.mkdir(parents=True, exist_ok=True)
+
+    # Export to local workspace first (always)
+    exporter = DriveLogExporter(event_file, LOCAL_TARGET)
     if exporter.export():
-        print("Drive export successful")
+        print("Local export successful")
+        # Optional Drive export — best-effort, never blocks success
+        _copy_to_drive(LOCAL_TARGET)
     else:
-        print("Drive export failed or skipped")
+        print("Local export failed or skipped")
+
 
 if __name__ == "__main__":
     main()
