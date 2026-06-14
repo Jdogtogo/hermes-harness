@@ -33,3 +33,6 @@ client_secret_*
 *.bak
 *.bak.*
 update_checkpoints/
+
+# Control Chain V1B generated unsafe test fixtures
+control_chain_v1/unsafe_test*.yaml
