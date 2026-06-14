@@ -1,0 +1,44 @@
+action_id: "test-004"
+workstream:
+  name: "harness-test"
+  category: "runner"
+risk_class: "green"
+requested_mode: "dry_run"
+working_directory: "/tmp"
+intent:
+  summary: "test"
+  objective: "test"
+commands:
+  allowed: ["ls"]
+  forbidden: ["rm"]
+files:
+  read: ["/tmp"]
+  write: []
+  delete: []
+external_services:
+  enabled: []
+  blocked: ["*"]
+git:
+  allow_add: false
+  allow_commit: false
+  allow_push: false
+  branch: "main"
+memory:
+  allow_read: true
+  allow_write: true
+skills:
+  allow_create: false
+  allow_modify: false
+governance:
+  allow_modify: false
+evidence_requirements:
+  required_before_execution: []
+  required_after_execution: []
+acceptance_criteria: ["success"]
+forbidden_patterns: ["*"]
+rollback_plan:
+  description: "none"
+  safe_restore_point: "none"
+kill_switch:
+  enabled: true
+  path: "/tmp/kill"

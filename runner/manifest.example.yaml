@@ -1,0 +1,10 @@
+name: dry-run-workflow
+working_directory: /tmp/runner-test
+allowed_commands: [ls, echo]
+forbidden_commands: [rm, git, rmdir, del, mv, move]
+allowed_files: ["*.txt"]
+forbidden_files: [".env", "auth.json", "token", "secret", "password", "private_key"]
+commit_allowed: false
+push_allowed: false
+required_checks: [safety_audit]
+stop_conditions: [git_staging]

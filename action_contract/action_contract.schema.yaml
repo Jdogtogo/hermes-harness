@@ -1,0 +1,101 @@
+type: object
+required:
+  - action_id
+  - workstream
+  - risk_class
+  - requested_mode
+  - working_directory
+  - intent
+  - commands
+  - files
+  - external_services
+  - git
+  - memory
+  - skills
+  - governance
+  - evidence_requirements
+  - acceptance_criteria
+  - forbidden_patterns
+  - rollback_plan
+  - kill_switch
+properties:
+  action_id: {type: string}
+  workstream:
+    type: object
+    required: [name, category]
+    properties:
+      name: {type: string}
+      category: {type: string, enum: [runner, rag, governance, git, system, api, research]}
+  risk_class: {type: string, enum: [green, amber, orange, red]}
+  requested_mode: {type: string, enum: [plan, act, review, dry_run, evaluation_only]}
+  working_directory: {type: string}
+  intent:
+    type: object
+    required: [summary, objective]
+    properties:
+      summary: {type: string}
+      objective: {type: string}
+  commands:
+    type: object
+    required: [allowed, forbidden]
+    properties:
+      allowed: {type: array, items: {type: string}}
+      forbidden: {type: array, items: {type: string}}
+  files:
+    type: object
+    required: [read, write, delete]
+    properties:
+      read: {type: array, items: {type: string}}
+      write: {type: array, items: {type: string}}
+      delete: {type: array, items: {type: string}}
+  external_services:
+    type: object
+    required: [enabled, blocked]
+    properties:
+      enabled: {type: array, items: {type: string}}
+      blocked: {type: array, items: {type: string}}
+  git:
+    type: object
+    required: [allow_add, allow_commit, allow_push, branch]
+    properties:
+      allow_add: {type: boolean}
+      allow_commit: {type: boolean}
+      allow_push: {type: boolean}
+      branch: {type: string}
+  memory:
+    type: object
+    required: [allow_read, allow_write]
+    properties:
+      allow_read: {type: boolean}
+      allow_write: {type: boolean}
+  skills:
+    type: object
+    required: [allow_create, allow_modify]
+    properties:
+      allow_create: {type: boolean}
+      allow_modify: {type: boolean}
+  governance:
+    type: object
+    required: [allow_modify]
+    properties:
+      allow_modify: {type: boolean}
+  evidence_requirements:
+    type: object
+    required: [required_before_execution, required_after_execution]
+    properties:
+      required_before_execution: {type: array, items: {type: string}}
+      required_after_execution: {type: array, items: {type: string}}
+  acceptance_criteria: {type: array, items: {type: string}}
+  forbidden_patterns: {type: array, items: {type: string}}
+  rollback_plan:
+    type: object
+    required: [description, safe_restore_point]
+    properties:
+      description: {type: string}
+      safe_restore_point: {type: string}
+  kill_switch:
+    type: object
+    required: [enabled, path]
+    properties:
+      enabled: {type: boolean}
+      path: {type: string}

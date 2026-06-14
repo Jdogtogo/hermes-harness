@@ -1,0 +1,12 @@
+# Policy Example
+workstream:
+  name: harness-test
+  category: runner
+risk_class: green
+allowed_commands: [ls, echo]
+forbidden_patterns: ["\\.env", "auth\\.json", "token", "secret"]
+git_operations: false
+memory_operations: false
+skill_operations: false
+governance_operations: false
+external_services: false
