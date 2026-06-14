@@ -1,0 +1,77 @@
+action_id: V1C-REAL-REPO-STATUS
+workstream:
+  name: real_repo_status
+  category: git
+risk_class: green
+requested_mode: act
+working_directory: /home/jfroh/hermes/harness
+intent:
+  summary: Perform read-only git status check
+  objective: Verify repository state using exact whitelisted command
+commands:
+  allowed:
+    - "git status --short"
+  forbidden:
+    - "git add"
+    - "git commit"
+    - "git push"
+    - "rm"
+    - "rmdir"
+    - "del"
+    - "mv"
+    - "move"
+    - "chmod"
+    - "curl"
+    - "wget"
+files:
+  read:
+    - ".git/"
+  write: []
+  delete: []
+external_services:
+  enabled: []
+  blocked:
+    - "*"
+git:
+  allow_add: false
+  allow_commit: false
+  allow_push: false
+  branch: feature/openai-rss-driver
+memory:
+  allow_read: false
+  allow_write: false
+skills:
+  allow_create: false
+  allow_modify: false
+governance:
+  allow_modify: false
+evidence_requirements:
+  required_before_execution:
+    - "working_directory_verified"
+    - "exact_command_verified"
+  required_after_execution:
+    - "stdout_captured"
+    - "exit_code_captured"
+acceptance_criteria:
+  - "Exact command is git status --short"
+  - "Working directory is /home/jfroh/hermes/harness"
+  - "No mutation commands are executed"
+  - "No external services are called"
+forbidden_patterns:
+  - ".env"
+  - "auth.json"
+  - "token"
+  - "secret"
+  - "password"
+  - "private_key"
+  - "git add"
+  - "git commit"
+  - "git push"
+  - "rm"
+  - "mv"
+rollback_plan:
+  description: "Remove V1C contract/policy/test/checkpoint and revert runner edit"
+  safe_restore_point: "9940bae"
+kill_switch:
+  enabled: true
+  path: /home/jfroh/.hermes/runtime/control_chain_v1c.disabled

@@ -1,6 +1,5 @@
 import os
 import yaml
-from pathlib import Path
 
 KILL_SWITCH = "/home/jfroh/.hermes/runtime/autonomy_runner.disabled"
 
@@ -26,3 +25,25 @@ class Runner:
         status = self.is_blocked(cmd, path)
         print(f"[{status}] cmd={cmd}, path={path}")
         return status
+
+    def run_v1c_repo_status(self, working_directory):
+        if working_directory != "/home/jfroh/hermes/harness":
+            return {"status": "CONTROL_CHAIN_V1C_REPO_STATUS_BLOCKED", "command": "git status --short"}
+        
+        import subprocess
+        result = subprocess.run(
+            ["git", "status", "--short"],
+            shell=False,
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=working_directory
+        )
+        return {
+            "status": "CONTROL_CHAIN_V1C_REPO_STATUS_PASS" if result.returncode == 0 else "CONTROL_CHAIN_V1C_REPO_STATUS_FAILED",
+            "command": "git status --short",
+            "working_directory": working_directory,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr
+        }

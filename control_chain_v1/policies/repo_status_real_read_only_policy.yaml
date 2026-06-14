@@ -1,0 +1,23 @@
+workstream:
+  name: real_repo_status
+  category: git
+allowed_commands:
+  - "git status --short"
+forbidden_patterns:
+  - ".env"
+  - "auth.json"
+  - "token"
+  - "secret"
+  - "password"
+  - "private_key"
+  - "git add"
+  - "git commit"
+  - "git push"
+  - "rm"
+  - "rmdir"
+  - "del"
+  - "mv"
+  - "move"
+  - "chmod"
+  - "curl"
+  - "wget"
