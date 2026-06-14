@@ -1,0 +1,2 @@
+pass_fail: true
+evidence_text: "git status is clean"

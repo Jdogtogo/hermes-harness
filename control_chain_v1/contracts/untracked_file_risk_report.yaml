@@ -1,0 +1,44 @@
+action_id: untracked-risk-001
+workstream:
+  name: harness-test
+  category: runner
+risk_class: green
+requested_mode: dry_run
+working_directory: /home/jfroh/hermes/harness
+intent:
+  summary: "Dry run untracked file risk assessment"
+  objective: "Identify files that may pose a risk if committed"
+commands:
+  allowed: ["ls"]
+  forbidden: []
+files:
+  read: ["."]
+  write: []
+  delete: []
+external_services:
+  enabled: []
+  blocked: ["*"]
+git:
+  allow_add: false
+  allow_commit: false
+  allow_push: false
+  branch: main
+memory:
+  allow_read: true
+  allow_write: false
+skills:
+  allow_create: false
+  allow_modify: false
+governance:
+  allow_modify: false
+evidence_requirements:
+  required_before_execution: []
+  required_after_execution: ["untracked_risk"]
+acceptance_criteria: ["risk_count == 0"]
+forbidden_patterns: ["\\.env", "auth\\.json", "token", "secret", "private_key", "password"]
+rollback_plan:
+  description: "No changes made"
+  safe_restore_point: "current state"
+kill_switch:
+  enabled: true
+  path: "/home/jfroh/.hermes/runtime/autonomy_runner.disabled"

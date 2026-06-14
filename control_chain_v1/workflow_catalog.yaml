@@ -1,0 +1,7 @@
+workflows:
+  - id: repo_status_dry_run
+  - id: preflight_dry_run
+  - id: allowlist_staging_simulation
+  - id: checkpoint_readiness_report
+  - id: test_suite_readiness_check
+  - id: untracked_file_risk_report

@@ -66,7 +66,7 @@ class ActionContractValidator:
             return "ACTION_CONTRACT_INVALID"
             
         # Command checks
-        all_cmds = " ".join(action_dict["commands"]["allowed"] + action_dict["commands"]["forbidden"])
+        all_cmds = " ".join(action_dict["commands"]["allowed"])
         forbidden_patterns = ["git push", "git add .", ".env", "auth.json", "token", "secret", "password", "private_key", "rm", "rmdir", "del", "mv", "move", "chmod 777"]
         for p in forbidden_patterns:
             if p in all_cmds:

@@ -1,0 +1,44 @@
+action_id: checkpoint-ready-001
+workstream:
+  name: harness-test
+  category: runner
+risk_class: green
+requested_mode: dry_run
+working_directory: /home/jfroh/hermes/harness
+intent:
+  summary: "Dry run checkpoint readiness assessment"
+  objective: "Confirm that all prerequisites for a checkpoint are met"
+commands:
+  allowed: ["ls"]
+  forbidden: []
+files:
+  read: ["."]
+  write: []
+  delete: []
+external_services:
+  enabled: []
+  blocked: ["*"]
+git:
+  allow_add: false
+  allow_commit: false
+  allow_push: false
+  branch: main
+memory:
+  allow_read: true
+  allow_write: false
+skills:
+  allow_create: false
+  allow_modify: false
+governance:
+  allow_modify: false
+evidence_requirements:
+  required_before_execution: []
+  required_after_execution: []
+acceptance_criteria: ["checkpoint_gate_pass == true"]
+forbidden_patterns: ["\\.env", "auth\\.json", "token", "secret", "private_key", "password"]
+rollback_plan:
+  description: "No changes made"
+  safe_restore_point: "current state"
+kill_switch:
+  enabled: true
+  path: "/home/jfroh/.hermes/runtime/autonomy_runner.disabled"
